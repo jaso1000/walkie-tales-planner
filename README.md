@@ -32,8 +32,9 @@ needs a catalogue in `data/`, built from your own list as below. Keep it on your
 ## Link the players
 
 In the ⋯ menu, give each child's WalkieTales player its address and PIN (both are in the player's *Grown-up settings →
-Remote control*). The planner then reads each player every 30 minutes, or when you tap *Check the player*, and matches
-its folders to your collection. Each child's view shows:
+Remote control*). The planner reads the players only when you need it: when you open the page (if the last reading is over
+10 minutes old) and when you tap *Check the player*. It never contacts them in the background. It matches each
+player's folders to your collection. Each child's view shows:
 
 - **On the player** with real sizes, **To add** (planned, not there yet) and **To remove** (there, not planned)
 - **Not in collection:** folders on the player that aren't in your list (Sleep Sounds and Messages are the player's own)

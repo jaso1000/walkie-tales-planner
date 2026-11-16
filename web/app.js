@@ -119,7 +119,17 @@ async function load() {
   renderKids();
   apply();
   setInterval(poll, 20000);
+  // The players are only read when needed: now, if the last reading is over 10 minutes old (or there is none).
+  // Readings made from another phone or computer show up here through the minute-by-minute check of the server's copy.
+  if (!devUpdated || Date.now() - new Date(devUpdated) > 10 * 60 * 1000) readPlayersNow();
   setInterval(() => loadDevices().then(changed => { if (changed) { renderKids(); apply(true); } }), 60000);
+}
+
+async function readPlayersNow() {
+  if (!Object.keys(playersCfg).length) return;
+  checking = true; renderKidPanel();
+  await loadDevices(true);
+  checking = false; renderKids(); apply(true);
 }
 
 // ------------------------------------------------------------------------------------------- the players

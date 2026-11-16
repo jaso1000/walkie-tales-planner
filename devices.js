@@ -128,9 +128,8 @@ module.exports = function devices(DATA, readJson) {
     try { return await busy; } finally { busy = null; }
   }
 
-  // read every player shortly after starting, then every 30 minutes, so "on the player" stays current
-  setTimeout(() => refresh().catch(() => {}), 5000).unref();
-  setInterval(() => refresh().catch(() => {}), 30 * 60 * 1000).unref();
+  // No background reading: the players are only contacted when the page asks (on opening it, if the last reading is
+  // old, or "Check the player"), to spare their batteries.
 
   return {
     cache,
