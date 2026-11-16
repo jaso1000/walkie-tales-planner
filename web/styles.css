@@ -255,3 +255,7 @@ body.selecting .card .tick { display: grid; }
 .fold .sel:empty { display: none; }
 .fold[open] .sel { display: none; }
 .fold > div, .fold > label { margin-bottom: 6px; }
+
+/* iPhone home-screen app: keep the header clear of the clock and battery */
+.top { padding-top: calc(10px + env(safe-area-inset-top)); }
+.side { padding-top: calc(18px + env(safe-area-inset-top)); }
