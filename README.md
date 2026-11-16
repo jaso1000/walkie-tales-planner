@@ -12,6 +12,8 @@ any players. It's a planning tool: the plan exports as a spreadsheet or JSON for
   Christmas, accents and one typo don't matter.
 - **Plan per child:** tap a child on an item, or select many and add them at once. Each child shows how much space their
   plan takes against their phone's free space.
+- **Knows what's on each player:** reads every WalkieTales player and shows what's already there, what to add and
+  what could go, with real free space.
 - **Saves as you go** on the server, so you can carry on from any phone or computer.
 - **Exports with every detail** (name and folder on the drive, title, authors, series, length, size, cover, source and
   how sure the match is).
@@ -26,6 +28,19 @@ mkdir data && docker compose up -d
 
 Open `http://<your server>:8475`. The image is `ghcr.io/jaso1000/walkie-tales-planner` (amd64 and arm64). The page
 needs a catalogue in `data/`, built from your own list as below. Keep it on your home network: there's no login.
+
+## Link the players
+
+In the ⋯ menu, give each child's WalkieTales player its address and PIN (both are in the player's *Grown-up settings →
+Remote control*). The planner then reads each player every 30 minutes, or when you tap *Check the player*, and matches
+its folders to your collection. Each child's view shows:
+
+- **On the player** with real sizes, **To add** (planned, not there yet) and **To remove** (there, not planned)
+- **Not in collection:** folders on the player that aren't in your list (Sleep Sounds and Messages are the player's own)
+- **Add what's on it to the plan**, to start a child's plan from what they already have
+- a storage bar using the player's real free space
+
+PINs are kept in `data/players.json` on the server and are never sent to the page.
 
 ## Build your catalogue
 

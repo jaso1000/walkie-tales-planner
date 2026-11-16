@@ -20,7 +20,9 @@ const store = {
 };
 
 let items = [], byId = new Map(), plan = { version: 0, kids: [], assign: {} }, catalogBuilt = '';
-const f = Object.assign({ q: '', type: 'all', age: '', season: '', sort: 'az', kid: '', unplanned: false, unsure: false }, store.get('filters', {}));
+let devs = {}, devUpdated = null, playersCfg = {}, checking = false; // what's on each child's player right now
+const PLAYER_MADE = new Set(['sleep sounds', 'messages', 'app update']); // folders the player makes itself
+const f = Object.assign({ q: '', type: 'all', age: '', season: '', sort: 'az', kid: '', kidView: 'plan', unplanned: false, unsure: false }, store.get('filters', {}));
 f.q = '';
 let view = store.get('view', 'grid');
 let shown = [], rendered = 0, selecting = false, selected = new Set(), saveTimer = 0, saving = false, dirty = false;
@@ -112,10 +114,56 @@ async function load() {
   byId = new Map(items.map(i => [i.id, i]));
   plan = p;
   if (plan.saved) saveState('Saved ✓');
+  await loadDevices();
   buildFilters();
   renderKids();
   apply();
   setInterval(poll, 20000);
+  setInterval(() => loadDevices().then(changed => { if (changed) { renderKids(); apply(true); } }), 60000);
+}
+
+// ------------------------------------------------------------------------------------------- the players
+
+async function loadDevices(fresh) {
+  try {
+    const [d, pc] = await Promise.all([
+      fresh ? fetch('/api/devices/refresh' + (fresh === true ? '' : '?kid=' + fresh), { method: 'POST' }).then(r => r.json())
+        : fetch('/api/devices').then(r => r.json()),
+      fetch('/api/players').then(r => r.json()),
+    ]);
+    playersCfg = pc;
+    if (d.updated === devUpdated && !fresh) return false;
+    devUpdated = d.updated;
+    devs = {};
+    for (const it of items) if (it.fromPlayer) { it.est = it.estBefore; it.exact = !!it.bytes; delete it.fromPlayer; }
+    for (const [kid, r] of Object.entries(d.kids || {})) {
+      const on = new Map(), extra = [];
+      let used = 0;
+      for (const fo of r.folders || []) {
+        used += fo.bytes;
+        const m = (r.matches || {})[fo.name];
+        if (m && byId.has(m.id)) {
+          on.set(m.id, (on.get(m.id) || 0) + fo.bytes);
+          const it = byId.get(m.id);
+          if (!it.bytes && fo.bytes && !it.fromPlayer) { it.estBefore = it.est; it.est = fo.bytes; it.exact = true; it.fromPlayer = true; }
+        } else extra.push({ ...fo, made: PLAYER_MADE.has(fo.name.toLowerCase()) });
+      }
+      devs[kid] = { ...r, on, extra, used, hasData: !!r.folders };
+    }
+    return true;
+  } catch { return false; }
+}
+
+const ago = iso => {
+  if (!iso) return 'never';
+  const m = Math.round((Date.now() - new Date(iso)) / 60000);
+  return m < 1 ? 'just now' : m < 60 ? `${m} min ago` : m < 1440 ? `${Math.round(m / 60)} h ago` : new Date(iso).toLocaleDateString();
+};
+/** Space for WalkieTales: live from the player (free + what WalkieTales already uses), else the number typed in. */
+function kidSpace(k) {
+  const d = devs[k.id];
+  if (d && d.hasData && d.status && d.status.freeBytes != null) return Math.max(0, d.status.freeBytes + d.used - 1e9);
+  return (k.spaceGB || 0) * 1e9;
 }
 
 async function poll() {
@@ -156,14 +204,22 @@ function setKid(id, kidId, on) {
   if (cur.size) plan.assign[id] = [...cur]; else delete plan.assign[id];
 }
 function kidUse(kidId) {
-  let bytes = 0, unknown = 0, n = 0; const byType = {};
+  const d = devs[kidId] || { on: new Map(), extra: [] };
+  let bytes = 0, unknown = 0, n = 0, keep = 0, add = 0, nAdd = 0; const byType = {};
   for (const [id, ks] of Object.entries(plan.assign)) {
     if (!ks.includes(kidId)) continue;
     const it = byId.get(id); if (!it) continue;
     n++;
-    if (it.est) { bytes += it.est; byType[it.kind] = (byType[it.kind] || 0) + it.est; } else unknown++;
+    const b = d.on.get(id) || it.est;
+    if (b) { bytes += b; byType[it.kind] = (byType[it.kind] || 0) + b; } else unknown++;
+    if (d.on.has(id)) keep += b; else { add += b; nAdd++; }
   }
-  return { bytes, unknown, n, byType };
+  let remove = 0, nRemove = 0;
+  for (const [id, b] of d.on) if (!kidsOf(id).includes(kidId)) { remove += b; nRemove++; }
+  const extra = d.extra.reduce((t, x) => t + x.bytes, 0);
+  // after: what the player holds once the plan is copied (folders that aren't in the collection stay)
+  return { bytes, unknown, n, byType, keep, add, nAdd, remove, nRemove, extra, nOn: d.on.size,
+    nExtra: d.extra.filter(x => !x.made).length, after: bytes + extra };
 }
 const gb = b => b >= 1e9 ? (b / 1e9).toFixed(b >= 1e10 ? 0 : 1) + ' GB' : Math.round(b / 1e6) + ' MB';
 const initials = n => (n || '?').trim().slice(0, 1).toUpperCase();
@@ -201,11 +257,13 @@ function buildFilters() {
 function renderKids() {
   const strip = [`<button class="kid${!f.kid ? ' on' : ''}" data-kid="" style="--kc:var(--accent)"><span class="av">★</span><span><b>Everything</b><small>${items.length} items</small></span></button>`];
   for (const k of plan.kids) {
-    const u = kidUse(k.id), space = (k.spaceGB || 0) * 1e9, pct = space ? Math.min(100, u.bytes / space * 100) : 0;
+    const u = kidUse(k.id), space = kidSpace(k), d = devs[k.id];
+    const pct = space ? Math.min(100, u.after / space * 100) : 0;
+    const live = d && d.hasData ? `<span class="live ${d.ok ? 'ok' : 'old'}" title="${d.ok ? 'Read from the player ' + ago(d.checked) : 'Player not answering: ' + esc(d.error || '')}"></span>` : '';
     strip.push(`<button class="kid${f.kid === k.id ? ' on' : ''}" data-kid="${k.id}" style="--kc:${k.color}">
-      <span class="av">${esc(initials(k.name))}</span>
-      <span><b>${esc(k.name)}</b><small>${u.n} planned · ${gb(u.bytes)}${space ? ' of ' + gb(space) : ''}</small>
-      <span class="bar${u.bytes > space && space ? ' over' : ''}"><i style="width:${pct}%"></i></span></span></button>`);
+      <span class="av">${esc(initials(k.name))}${live}</span>
+      <span><b>${esc(k.name)}</b><small>${u.n} planned${d && d.hasData ? ` · ${u.nOn} on player` : ''}</small>
+      <span class="bar${u.after > space && space ? ' over' : ''}"><i style="width:${pct}%"></i></span></span></button>`);
   }
   $('#kids').innerHTML = strip.join('');
   renderKidPanel();
@@ -214,21 +272,51 @@ function renderKids() {
 function renderKidPanel() {
   const k = plan.kids.find(x => x.id === f.kid), el = $('#kidPanel');
   if (!k) { el.hidden = true; return; }
-  const u = kidUse(k.id), space = (k.spaceGB || 0) * 1e9;
-  const segs = Object.entries(u.byType).sort((a, b) => b[1] - a[1]);
-  const left = space - u.bytes;
+  const u = kidUse(k.id), space = kidSpace(k), d = devs[k.id], hasDev = d && d.hasData;
+  const total = Math.max(space, u.after + u.remove, 1);
+  const w = b => (b / total * 100).toFixed(2) + '%';
+  const left = space - u.after;
+  let state;
+  if (!playersCfg[k.id]) state = "No player linked yet — add its address and PIN in the ⋯ menu to see what's on it.";
+  else if (!hasDev) state = d && d.error ? `Couldn't reach the player: ${esc(d.error)}` : 'Reading the player…';
+  else state = `${esc(d.status && d.status.model ? deviceName(d.status.model) : k.device || 'Player')} · WalkieTales ${esc((d.status && d.status.version) || '?')}`
+    + (d.status && d.status.battery != null ? ` · battery ${d.status.battery}%${d.status.charging ? ' ⚡' : ''}` : '') + ' · '
+    + (d.ok ? `read ${ago(d.checked)}` : `<b style="color:var(--warn)">not answering (${esc(d.error || 'asleep?')}) — showing what was there ${ago(d.checked)}</b>`);
+  const tabs = [['plan', 'Planned', u.n]].concat(hasDev ? [['on', 'On the player', u.nOn], ['add', 'To add', u.nAdd],
+    ['remove', 'To remove', u.nRemove], ['extra', 'Not in collection', u.nExtra]] : []);
+  if (!hasDev && f.kidView !== 'plan') f.kidView = 'plan';
   el.style.setProperty('--kc', k.color);
-  el.innerHTML = `<h2>${esc(k.name)}'s player</h2>
-    <div class="muted">${esc(k.device || '')}${k.storageGB ? ` · ${k.storageGB} GB phone` : ''}${space ? ` · about ${gb(space)} free for WalkieTales` : ''}</div>
-    <div class="big-bar">${segs.map(([t, b]) => `<i style="width:${space ? b / Math.max(space, u.bytes) * 100 : 0}%;background:${TYPE_COLOR[t]}"></i>`).join('')}</div>
-    <div class="legend">${segs.map(([t, b]) => `<span style="--c:${TYPE_COLOR[t]}">${TYPE_NAME[t]} ${gb(b)}</span>`).join('')}
-      <span style="--c:var(--panel-2)">${left >= 0 ? gb(left) + ' left' : '<b style="color:var(--bad)">' + gb(-left) + ' too much</b>'}</span></div>
-    <div class="muted fine" style="margin-top:6px">${u.n} planned${u.unknown ? ` · ${u.unknown} without a size yet (shown once the drive is scanned)` : ''}${items.some(i => i.exact) ? '' : ' · sizes are estimates from the length until the drive is scanned'}</div>`;
+  el.innerHTML = `<div class="kp-head"><div><h2>${esc(k.name)}'s player</h2><div class="muted fine">${state}</div></div>
+      <div class="kp-actions">${playersCfg[k.id] ? `<button class="ghost" id="checkNow"${checking ? ' disabled' : ''}>${checking ? 'Checking…' : '↻ Check the player'}</button>` : ''}
+      ${hasDev && u.nOn ? `<button class="ghost" id="importOn">Add what's on it to the plan</button>` : ''}</div></div>
+    <div class="big-bar">
+      <i style="width:${w(u.keep)};background:var(--kc)" title="Planned and on the player: ${gb(u.keep)}"></i>
+      <i style="width:${w(u.add)};background:var(--kc);opacity:.45" title="Planned, still to copy: ${gb(u.add)}"></i>
+      <i style="width:${w(u.extra)};background:#7b7596" title="On the player, not in the collection: ${gb(u.extra)}"></i>
+      <i class="stripe" style="width:${w(u.remove)}" title="On the player but not planned: ${gb(u.remove)}"></i></div>
+    <div class="legend">
+      ${hasDev ? `<span style="--c:var(--kc)">On the player and planned ${gb(u.keep)}</span>` : ''}
+      <span style="--c:color-mix(in srgb, var(--kc) 45%, transparent)">${hasDev ? 'To add' : 'Planned'} ${gb(u.add)}</span>
+      ${hasDev && u.extra ? `<span style="--c:#7b7596">Not in the collection ${gb(u.extra)}</span>` : ''}
+      ${hasDev && u.remove ? `<span class="st">Not planned (could go) ${gb(u.remove)}</span>` : ''}
+      <span style="--c:var(--panel-2)">${space ? (left >= 0 ? `${gb(left)} left after the plan` : `<b style="color:var(--bad)">${gb(-left)} too much</b>`) : 'free space unknown'}</span></div>
+    <div class="muted fine" style="margin-top:4px">${space ? `${gb(space)} for WalkieTales${hasDev ? ' (from the player)' : ''}` : ''}${u.unknown ? ` · ${u.unknown} planned without a size yet` : ''}</div>
+    <div class="kp-tabs">${tabs.map(([key, label, n]) => `<button class="chip${f.kidView === key ? ' on' : ''}" data-view="${key}">${label}<em>${n}</em></button>`).join('')}</div>`;
   el.hidden = false;
+}
+
+const MODELS = { 'SM-G960F': 'Galaxy S9', 'SM-G965F': 'Galaxy S9+', 'SM-G973F': 'Galaxy S10', 'SM-N9005': 'Galaxy Note 3', 'iPhone9,1': 'iPhone 7', 'iPhone9,3': 'iPhone 7' };
+const deviceName = m => MODELS[m] || m;
+
+function kidFilter(id) {
+  const planned = kidsOf(id).includes(f.kid), on = !!(devs[f.kid] && devs[f.kid].on.has(id));
+  const v = { plan: planned, on, add: planned && !on, remove: on && !planned }[f.kidView];
+  return v === undefined ? planned : v;
 }
 
 function apply(keepScroll) {
   store.set('filters', { ...f, q: '' });
+  if (f.kid && f.kidView === 'extra') return showExtra();
   const q = norm(f.q).split(' ').filter(Boolean);
   // keep two-word names together so "iron man" or "paw patrol" match as one
   for (let i = 0; i < q.length - 1; i++) if (aliasMap.has(q[i] + q[i + 1])) { q.splice(i, 2, q[i] + ' ' + q[i + 1]); }
@@ -237,7 +325,7 @@ function apply(keepScroll) {
     (f.type === 'all' || it.kind === f.type) &&
     (!f.age || it.age === f.age) &&
     (!f.season || it.season === f.season) &&
-    (!f.kid || kidsOf(it.id).includes(f.kid)) &&
+    (!f.kid || kidFilter(it.id)) &&
     (!f.unplanned || !kidsOf(it.id).length) &&
     (!f.unsure || it.unsure) &&
     (!q.length || (s => (s && scores.set(it.id, s), s))(searchScore(it, q))));
@@ -259,17 +347,38 @@ function apply(keepScroll) {
   if (keepScroll) { while (rendered < shown.length && document.body.scrollHeight < y + innerHeight) more(); window.scrollTo(0, y); }
 }
 
+/** Folders on the player that aren't in the collection (and the player's own Sleep Sounds and Messages). */
+function showExtra() {
+  const d = devs[f.kid];
+  const list = ((d && d.extra) || []).slice().sort((a, b) => a.made - b.made || a.name.localeCompare(b.name));
+  $('#count').textContent = `${list.length} folders on the player that aren't in the collection · ${gb(list.reduce((t, x) => t + x.bytes, 0))}`;
+  $('#grid').innerHTML = list.length ? list.map(x => `<div class="card extra">
+      <div class="cover"><div class="ph" style="background:linear-gradient(150deg,#7b7596,#1b1530)"><div><span>${x.made ? '🌙' : '📁'}</span>${esc(x.name)}</div></div></div>
+      <div class="t">${esc(x.name)}</div><div class="s">${x.made ? 'Made by the player' : `${x.files} files · ${gb(x.bytes)}`}</div>
+      <div class="meta"><span>${x.made ? 'Made by the player' : esc(x.category || '')}</span><span>${gb(x.bytes)}</span></div></div>`).join('')
+    : '<div class="empty">Everything on this player is in the collection.</div>';
+  $('#more').textContent = '';
+}
+
+function kidMarks(id) {
+  return plan.kids.map(k => {
+    const planned = kidsOf(id).includes(k.id), on = !!(devs[k.id] && devs[k.id].on.has(id));
+    if (!planned && !on) return '';
+    const t = `${k.name}: ${planned && on ? 'planned, already on the player' : planned ? 'planned' : 'on the player, not planned'}`;
+    return `<i class="${planned ? '' : 'hollow'}${on ? ' onp' : ''}" style="--kc:${k.color}" title="${esc(t)}">${esc(initials(k.name))}</i>`;
+  }).join('');
+}
+
 function card(it) {
-  const ks = kidsOf(it.id).map(id => plan.kids.find(k => k.id === id)).filter(Boolean);
   const len = it.minutes ? (it.minutes >= 60 ? `${Math.floor(it.minutes / 60)}h ${it.minutes % 60}m` : `${it.minutes}m`) : '';
   const sub = [it.by, len].filter(Boolean).join(' · ') || it.category;
   return `<button class="card${selected.has(it.id) ? ' sel' : ''}" data-id="${it.id}">
     <div class="cover">${coverHtml(it)}<span class="badge">${TYPE_ICON[it.kind] || ''} ${it.season || TYPE_NAME[it.kind] || ''}</span>
-      <span class="dots">${ks.map(k => `<i style="--kc:${k.color}" title="${esc(k.name)}">${esc(initials(k.name))}</i>`).join('')}</span>
+      <span class="dots">${kidMarks(it.id)}</span>
       <span class="tick">✓</span></div>
     <div class="t">${esc(it.title)}</div><div class="s">${esc(sub)}</div>
     <div class="meta"><span>${TYPE_ICON[it.kind] || ''} ${esc(it.season || TYPE_NAME[it.kind] || '')}${it.age ? ' · ' + esc(it.age) : ''}${it.est ? ' · ' + (it.exact ? '' : '≈') + gb(it.est) : ''}</span>
-      <span class="dots">${ks.map(k => `<i style="--kc:${k.color}" title="${esc(k.name)}">${esc(initials(k.name))}</i>`).join('')}</span></div></button>`;
+      <span class="dots">${kidMarks(it.id)}</span></div></button>`;
 }
 
 function coverHtml(it) {
@@ -310,7 +419,7 @@ function openDetail(id) {
       <div class="facts">${facts.map(x => `<span>${esc(x)}</span>`).join('')}</div>
       ${it.unsure ? `<div class="unsure">${it.match ? `Best guess: <b>${esc(m.title)}</b> — not sure it's the right one, so the details below may be for a different book in the series` : "Couldn't find this one online"}. The name on the drive is “${esc(it.name)}”.</div>` : ''}
       <h2>Plan for</h2>
-      <div class="assign">${plan.kids.map(k => `<button data-assign="${k.id}" class="${kidsOf(id).includes(k.id) ? 'on' : ''}" style="--kc:${k.color}"><span class="av">${esc(initials(k.name))}</span>${esc(k.name)}</button>`).join('')}</div>
+      <div class="assign">${plan.kids.map(k => `<button data-assign="${k.id}" class="${kidsOf(id).includes(k.id) ? 'on' : ''}" style="--kc:${k.color}"><span class="av">${esc(initials(k.name))}</span>${esc(k.name)}${devs[k.id] && devs[k.id].on.has(id) ? ' <small>· on player</small>' : ''}</button>`).join('')}</div>
       ${m.blurb ? `<p class="blurb">${esc(m.blurb)}</p>` : ''}
       <div class="src">On the drive: <b>${esc(it.name)}</b><br>${esc(it.folder)}${it.files ? ` · ${it.files} files` : ''}
         ${m.link ? `<br>Details from <a href="${esc(m.link)}" target="_blank" rel="noopener noreferrer">${esc(m.source)}</a>` : ''}</div>
@@ -336,10 +445,46 @@ function renderKidEditor() {
       <input value="${esc(k.name)}" data-k="name" aria-label="Name">
       <input class="dev" value="${esc(k.device || '')}" data-k="device" aria-label="Phone">
       <input type="number" min="0" step="0.5" value="${k.spaceGB ?? ''}" data-k="spaceGB" aria-label="GB free for WalkieTales">
-      <button data-del="${i}" aria-label="Remove ${esc(k.name)}" title="Remove">✕</button></div>`).join('');
+      <button data-del="${i}" aria-label="Remove ${esc(k.name)}" title="Remove">✕</button></div>
+    <div class="kid-player" data-kid="${k.id}">
+      <span class="live ${devs[k.id] && devs[k.id].ok ? 'ok' : devs[k.id] ? 'old' : ''}"></span>
+      <input value="${esc((playersCfg[k.id] && playersCfg[k.id].url) || '')}" data-p="url" placeholder="Player address, e.g. 192.168.1.50" aria-label="${esc(k.name)}'s player address">
+      <input type="password" value="" data-p="pin" placeholder="${playersCfg[k.id] && playersCfg[k.id].hasPin ? 'PIN saved' : 'PIN'}" autocomplete="off" aria-label="${esc(k.name)}'s player PIN">
+      <button class="ghost" data-savep="${k.id}">Save</button></div>`).join('') +
+    `<p class="muted fine">The player's address and PIN are in its Grown-up settings → Remote control. PINs stay on the server and are never shown here.</p>`;
 }
 
 // ------------------------------------------------------------------------------------------- events
+
+$('#kidPanel').addEventListener('click', async e => {
+  const t = e.target.closest('[data-view]');
+  if (t) { f.kidView = t.dataset.view; renderKidPanel(); apply(); return; }
+  if (e.target.id === 'checkNow') {
+    checking = true; renderKidPanel();
+    await loadDevices(f.kid);
+    checking = false; renderKids(); apply(true);
+    const d = devs[f.kid];
+    toast(d && d.ok ? 'Read the player just now' : `Couldn't reach the player${d && d.error ? ': ' + d.error : ''}`);
+  }
+  if (e.target.id === 'importOn') {
+    const d = devs[f.kid], k = plan.kids.find(x => x.id === f.kid);
+    let n = 0;
+    for (const id of d.on.keys()) if (!kidsOf(id).includes(k.id)) { setKid(id, k.id, true); n++; }
+    save(); renderKids(); apply(true);
+    toast(n ? `Added ${n} from ${k.name}'s player to the plan` : `Everything on ${k.name}'s player is already planned`);
+  }
+});
+$('#kidEditor').addEventListener('click', async e => {
+  const b = e.target.closest('[data-savep]'); if (!b) return;
+  const row = b.closest('.kid-player');
+  const url = row.querySelector('[data-p=url]').value.trim(), pin = row.querySelector('[data-p=pin]').value.trim();
+  b.disabled = true; b.textContent = 'Checking…';
+  await fetch('/api/players/' + b.dataset.savep, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url, pin }) });
+  await loadDevices(b.dataset.savep);
+  renderKidEditor(); renderKids(); apply(true);
+  const d = devs[b.dataset.savep];
+  toast(!url ? 'Player unlinked' : d && d.ok ? 'Linked — read the player' : `Saved, but couldn't read it: ${(d && d.error) || ''}`);
+});
 
 let qTimer = 0;
 $('#q').addEventListener('input', e => { clearTimeout(qTimer); qTimer = setTimeout(() => { f.q = e.target.value; apply(); }, 150); });

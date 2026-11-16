@@ -110,12 +110,24 @@ function exportJson() {
   };
 }
 
+const devices = require('./devices')(DATA, readJson);
+
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://x');
   const p = decodeURIComponent(url.pathname);
   try {
     if (p === '/api/catalog') return sendFile(res, path.join(DATA, 'catalog.json'));
     if (p === '/api/plan' && req.method === 'GET') return send(res, 200, loadPlan());
+    // what's on each player now (cached; POST reads them again), and each kid's player address (never the PIN)
+    if (p === '/api/devices' && req.method === 'GET') return send(res, 200, devices.cache());
+    if (p === '/api/devices/refresh' && req.method === 'POST') return send(res, 200, await devices.refresh(url.searchParams.get('kid') || ''));
+    if (p === '/api/players' && req.method === 'GET') return send(res, 200, devices.list());
+    const pl = p.match(/^\/api\/players\/([\w-]{1,40})$/);
+    if (pl && req.method === 'PUT') {
+      const b = await body(req);
+      devices.set(pl[1], String(b.url || '').trim(), String(b.pin || '').trim());
+      return send(res, 200, devices.list());
+    }
     if (p === '/api/plan' && req.method === 'PUT') {
       const next = await body(req);
       const cur = loadPlan();

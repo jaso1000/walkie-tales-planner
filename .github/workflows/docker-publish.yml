@@ -8,6 +8,7 @@ on:
     branches: [main]
     paths:
       - 'server.js'
+      - 'devices.js'
       - 'web/**'
       - 'Dockerfile'
       - '.github/workflows/docker-publish.yml'
