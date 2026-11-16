@@ -6,7 +6,11 @@
 <title>Collection Planner</title>
 <meta name="theme-color" content="#16112a">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
-<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png?v=1">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Planner">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="stylesheet" href="styles.css">
 </head>
@@ -29,14 +33,18 @@
 <div class="layout">
   <aside id="side" class="side" aria-label="Players and filters">
     <div class="side-head"><b>Filters</b><button class="icon-btn" id="sideClose" aria-label="Close filters">✕</button></div>
-    <section><h3>Players</h3><div id="sideKids" class="side-list"></div></section>
-    <section><h3>Type</h3><div id="sideType" class="side-list"></div></section>
-    <section><h3>Age</h3><div id="sideAge" class="side-list"></div></section>
-    <section id="seasonBox"><h3>Time of year</h3><div id="sideSeason" class="side-list"></div></section>
-    <section><h3>Show only</h3>
+    <section class="players"><h3>Players</h3><div id="sideKids" class="side-list"></div></section>
+    <details class="fold" data-fold="type" open><summary>Type <span class="sel" id="selType"></span></summary><div id="sideType" class="side-list"></div></details>
+    <details class="fold" data-fold="age"><summary>Age <span class="sel" id="selAge"></span></summary><div id="sideAge" class="side-list"></div></details>
+    <details class="fold" data-fold="len"><summary>Length <span class="sel" id="selLen"></span></summary><div id="sideLen" class="side-list"></div></details>
+    <details class="fold" data-fold="topic"><summary>Topic <span class="sel" id="selTopic"></span></summary><div id="sideTopic" class="side-list"></div></details>
+    <details class="fold" data-fold="season" id="seasonBox"><summary>Time of year <span class="sel" id="selSeason"></span></summary><div id="sideSeason" class="side-list"></div></details>
+    <details class="fold" data-fold="onp"><summary>On a player <span class="sel" id="selOnp"></span></summary><div id="sideOnp" class="side-list"></div></details>
+    <details class="fold" data-fold="only"><summary>Show only <span class="sel" id="selOnly"></span></summary>
       <label class="check"><input id="unplanned" type="checkbox"> Not planned yet</label>
       <label class="check"><input id="unsure" type="checkbox"> Unsure matches</label>
-    </section>
+      <label class="check"><input id="hasCover" type="checkbox"> With a cover</label>
+    </details>
   </aside>
   <div class="scrim" id="scrim"></div>
 

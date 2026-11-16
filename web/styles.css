@@ -239,3 +239,19 @@ body.selecting .card .tick { display: grid; }
 .toast { position: fixed; left: 50%; bottom: 90px; transform: translateX(-50%) translateY(20px); opacity: 0; transition: .2s;
   background: #1b1530; color: #fff; padding: 9px 16px; border-radius: 12px; z-index: 60; pointer-events: none; font-size: 14px; }
 .toast.show { opacity: 1; transform: translateX(-50%); }
+
+/* fold-away filter sections */
+.side .players { margin-bottom: 14px; }
+.fold { border-top: 1px solid var(--line); padding: 4px 0; }
+.fold summary { list-style: none; cursor: pointer; display: flex; align-items: center; gap: 8px; padding: 9px 8px; border-radius: 9px;
+  font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); font-weight: 700; }
+.fold summary::-webkit-details-marker { display: none; }
+.fold summary::after { content: ""; width: 7px; height: 7px; border-right: 2px solid currentColor; border-bottom: 2px solid currentColor;
+  transform: rotate(-45deg); margin-left: 4px; transition: transform .15s; opacity: .7; }
+.fold[open] summary::after { transform: rotate(45deg); }
+.fold summary:hover { color: var(--text); }
+.fold .sel { margin-left: auto; text-transform: none; letter-spacing: 0; font-weight: 600; font-size: 12.5px; color: var(--accent);
+  max-width: 110px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fold .sel:empty { display: none; }
+.fold[open] .sel { display: none; }
+.fold > div, .fold > label { margin-bottom: 6px; }

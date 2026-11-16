@@ -22,7 +22,27 @@ const store = {
 let items = [], byId = new Map(), plan = { version: 0, kids: [], assign: {} }, catalogBuilt = '';
 let devs = {}, devUpdated = null, playersCfg = {}, checking = false; // what's on each child's player right now
 const PLAYER_MADE = new Set(['sleep sounds', 'messages', 'app update']); // folders the player makes itself
-const f = Object.assign({ q: '', type: 'all', age: '', season: '', sort: 'az', kid: '', kidView: 'plan', unplanned: false, unsure: false }, store.get('filters', {}));
+const f = Object.assign({ q: '', type: 'all', age: '', season: '', len: '', topic: '', onp: '', sort: 'az', kid: '', kidView: 'plan',
+  unplanned: false, unsure: false, hasCover: false }, store.get('filters', {}));
+
+// Friendly topics, made from the shop categories we found and a few words in the titles
+const TOPICS = [
+  ['animals', 'Animals & nature', /animals|nature/i, /\b(animal|dog|cat|puppy|kitten|horse|pony|bear|dino|dinosaur|farm|zoo|ocean|jungle)/i],
+  ['adventure', 'Adventure', /action|adventure/i, null],
+  ['fantasy', 'Fantasy & magic', /fantasy|science fiction/i, /\b(magic|dragon|wizard|unicorn|fairy|fairies|witch)/i],
+  ['fairy', 'Fairy tales & myths', /fairy tales|folk|myth/i, /\b(fairy tale|fairytale|myth|legend|aesop)/i],
+  ['funny', 'Funny', /comedy|humou?r/i, /\b(joke|funny|silly|laugh)/i],
+  ['mystery', 'Mystery', /mystery|suspense|thriller/i, /\b(mystery|detective|spy)/i],
+  ['growing', 'Growing up', /growing up/i, null],
+  ['learning', 'Learning & facts', /education|science|geography|history|technology/i, /\b(learn|facts|science|history|phonics|counting|alphabet|abc)/i],
+  ['faith', 'Faith', /religion|spirituality|christian/i, /\b(bible|jesus|christian|god)\b/i],
+  ['bedtime', 'Bedtime', null, /\b(bedtime|sleep|goodnight|lullab|night night|dream)/i],
+  ['classics', 'Classics', /classics/i, null],
+  ['music', 'Songs & singing', null, /\b(songs|sing|nursery rhyme|music)/i],
+  ['sport', 'Sport', /sports/i, /\b(football|soccer|cricket|tennis|sport)/i],
+];
+const LENGTHS = [['short', 'Under 30 min', m => m > 0 && m < 30], ['medium', '30 min to 2 h', m => m >= 30 && m <= 120], ['long', 'Over 2 h', m => m > 120]];
+const ONP = [['any', 'On any player'], ['none', 'Not on any player']];
 f.q = '';
 let view = store.get('view', 'grid');
 let shown = [], rendered = 0, selecting = false, selected = new Set(), saveTimer = 0, saving = false, dirty = false;
@@ -104,6 +124,8 @@ function prep(it) {
   it.compact = it.hay.replace(/ /g, '');
   it.pad = ' ' + it.hay + ' ';
   it.titlePad = ' ' + norm(it.title + ' ' + it.series) + ' ';
+  const g = (m.genres || []).join(' | '), words = [it.title, it.name, it.series].join(' ');
+  it.topics = TOPICS.filter(([, , gre, wre]) => (gre && gre.test(g)) || (wre && wre.test(words))).map(t => t[0]);
   return it;
 }
 
@@ -259,6 +281,23 @@ function buildFilters() {
   const ages = AGES.filter(a => items.some(i => i.age === a));
   $('#sideAge').innerHTML = row('age', '', 'Any age', '', !f.age) +
     ages.map(a => row('age', a, a, items.filter(i => i.age === a).length, f.age === a)).join('');
+  $('#sideLen').innerHTML = row('len', '', 'Any length', '', !f.len) +
+    LENGTHS.map(([k, label, fn]) => row('len', k, label, items.filter(i => fn(i.minutes)).length, f.len === k)).join('');
+  $('#sideTopic').innerHTML = row('topic', '', 'Any topic', '', !f.topic) +
+    TOPICS.map(([k, label]) => [k, label, items.filter(i => i.topics.includes(k)).length]).filter(t => t[2])
+      .map(([k, label, n]) => row('topic', k, label, n, f.topic === k)).join('');
+  const onAny = id => Object.values(devs).some(d => d.on.has(id));
+  $('#sideOnp').innerHTML = row('onp', '', 'Either', '', !f.onp) +
+    ONP.map(([k, label]) => row('onp', k, label, items.filter(i => k === 'any' ? onAny(i.id) : !onAny(i.id)).length, f.onp === k)).join('');
+  const label = (list, v) => (list.find(x => x[0] === v) || [])[1] || '';
+  $('#selType').textContent = f.type === 'all' ? '' : label(TYPES, f.type);
+  $('#selAge').textContent = f.age;
+  $('#selLen').textContent = label(LENGTHS, f.len);
+  $('#selTopic').textContent = label(TOPICS, f.topic);
+  $('#selSeason').textContent = f.season;
+  $('#selOnp').textContent = label(ONP, f.onp);
+  $('#selOnly').textContent = [f.unplanned && 'Not planned', f.unsure && 'Unsure', f.hasCover && 'Cover'].filter(Boolean).join(', ');
+  $('#hasCover').checked = f.hasCover;
   const seasons = [...new Set(items.map(i => i.season).filter(Boolean))];
   $('#seasonBox').hidden = !seasons.length;
   $('#sideSeason').innerHTML = row('season', '', 'Any time', '', !f.season) +
@@ -351,6 +390,10 @@ function apply(keepScroll) {
     (f.type === 'all' || it.kind === f.type) &&
     (!f.age || it.age === f.age) &&
     (!f.season || it.season === f.season) &&
+    (!f.len || (LENGTHS.find(l => l[0] === f.len) || [, , () => true])[2](it.minutes)) &&
+    (!f.topic || it.topics.includes(f.topic)) &&
+    (!f.onp || (f.onp === 'any') === Object.values(devs).some(d => d.on.has(it.id))) &&
+    (!f.hasCover || it.hasCover) &&
     (!f.kid || kidFilter(it.id)) &&
     (!f.unplanned || !kidsOf(it.id).length) &&
     (!f.unsure || it.unsure) &&
@@ -368,7 +411,7 @@ function apply(keepScroll) {
   renderActive();
   const y = window.scrollY;
   rendered = 0;
-  const filtered = f.type !== 'all' || f.age || f.season || f.unplanned || f.unsure;
+  const filtered = f.type !== 'all' || f.age || f.season || f.len || f.topic || f.onp || f.unplanned || f.unsure || f.hasCover;
   const kname = f.kid && (plan.kids.find(k => k.id === f.kid) || {}).name;
   const kidEmpty = { plan: `Nothing planned for ${kname} yet. Pick things from <b>Everything</b>${devs[f.kid] && devs[f.kid].on.size ? ', or use <b>Add what’s on it to the plan</b> above' : ''}.`,
     on: `Nothing from the collection is on ${kname}'s player.`, add: `Everything planned for ${kname} is already on the player.`,
@@ -399,6 +442,10 @@ function renderActive() {
   if (f.type !== 'all') bits.push((TYPES.find(t => t[0] === f.type) || [])[1]);
   if (f.age) bits.push(f.age);
   if (f.season) bits.push(f.season);
+  if (f.len) bits.push((LENGTHS.find(l => l[0] === f.len) || [])[1]);
+  if (f.topic) bits.push((TOPICS.find(t => t[0] === f.topic) || [])[1]);
+  if (f.onp) bits.push((ONP.find(o => o[0] === f.onp) || [])[1]);
+  if (f.hasCover) bits.push('with a cover');
   if (f.unplanned) bits.push('not planned yet');
   if (f.unsure) bits.push('unsure matches');
   $('#activeFilters').innerHTML = bits.length ? `<span class="af">${esc(bits.join(' · '))}</span><button class="text-btn" id="clearAll">Clear</button>` : '';
@@ -408,7 +455,7 @@ function renderActive() {
 
 function kidMarks(id) {
   return plan.kids.map(k => {
-    const planned = kidsOf(id).includes(k.id), on = !!(devs[k.id] && devs[k.id].on.has(id));
+    const planned = kidsOf(id).includes(k.id), on = f.kid === k.id && !!(devs[k.id] && devs[k.id].on.has(id));
     if (!planned && !on) return '';
     const t = `${k.name}: ${planned && on ? 'planned, already on the player' : planned ? 'planned' : 'on the player, not planned'}`;
     return `<i class="${planned ? '' : 'hollow'}${on ? ' onp' : ''}" style="--kc:${k.color}" title="${esc(t)}">${esc(initials(k.name))}</i>`;
@@ -535,7 +582,8 @@ $('#kidEditor').addEventListener('click', async e => {
 let qTimer = 0;
 $('#q').addEventListener('input', e => { clearTimeout(qTimer); qTimer = setTimeout(() => { f.q = e.target.value; apply(); }, 150); });
 $('#side').addEventListener('click', e => {
-  const b = e.target.closest('[data-type],[data-age],[data-season]'); if (!b) return;
+  const b = e.target.closest('[data-type],[data-age],[data-season],[data-len],[data-topic],[data-onp]'); if (!b) return;
+  for (const k of ['len', 'topic', 'onp']) if (k in b.dataset) f[k] = b.dataset[k];
   if ('type' in b.dataset) f.type = b.dataset.type;
   if ('age' in b.dataset) f.age = b.dataset.age;
   if ('season' in b.dataset) f.season = b.dataset.season;
@@ -547,12 +595,18 @@ $('#sideClose').addEventListener('click', () => drawer(false));
 $('#scrim').addEventListener('click', () => drawer(false));
 document.addEventListener('click', e => {
   if (e.target.id !== 'clearAll' && e.target.id !== 'clearAll2') return;
-  Object.assign(f, { type: 'all', age: '', season: '', unplanned: false, unsure: false });
+  Object.assign(f, { type: 'all', age: '', season: '', len: '', topic: '', onp: '', unplanned: false, unsure: false, hasCover: false });
   buildFilters(); apply();
 });
 $('#sort').addEventListener('change', e => { f.sort = e.target.value; apply(); });
-$('#unplanned').addEventListener('change', e => { f.unplanned = e.target.checked; apply(); });
-$('#unsure').addEventListener('change', e => { f.unsure = e.target.checked; apply(); });
+$('#unplanned').addEventListener('change', e => { f.unplanned = e.target.checked; buildFilters(); apply(); });
+$('#unsure').addEventListener('change', e => { f.unsure = e.target.checked; buildFilters(); apply(); });
+$('#hasCover').addEventListener('change', e => { f.hasCover = e.target.checked; buildFilters(); apply(); });
+const folds = store.get('folds', {});
+document.querySelectorAll('.fold').forEach(d => {
+  if (d.dataset.fold in folds) d.open = folds[d.dataset.fold];
+  d.addEventListener('toggle', () => { folds[d.dataset.fold] = d.open; store.set('folds', folds); });
+});
 function pickKid(e) {
   const b = e.target.closest('[data-kid]'); if (!b) return;
   f.kid = f.kid === b.dataset.kid ? '' : b.dataset.kid;
