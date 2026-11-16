@@ -253,28 +253,43 @@ function saveState(text, bad) {
 function buildFilters() {
   const counts = {};
   for (const it of items) counts[it.kind] = (counts[it.kind] || 0) + 1;
-  $('#types').innerHTML = TYPES.filter(([k]) => k === 'all' || counts[k]).map(([k, label, ico]) =>
-    `<button class="chip${f.type === k ? ' on' : ''}" data-type="${k}">${ico} ${label}<em>${k === 'all' ? items.length : counts[k]}</em></button>`).join('');
+  const row = (attr, val, label, n, on) => `<button class="row${on ? ' on' : ''}" data-${attr}="${esc(val)}">${label}<span class="n">${n ?? ''}</span></button>`;
+  $('#sideType').innerHTML = TYPES.filter(([k]) => k === 'all' || counts[k])
+    .map(([k, label]) => row('type', k, label, k === 'all' ? items.length : counts[k], f.type === k)).join('');
   const ages = AGES.filter(a => items.some(i => i.age === a));
-  $('#age').innerHTML = '<option value="">Any age</option>' + ages.map(a => `<option${f.age === a ? ' selected' : ''}>${a}</option>`).join('');
+  $('#sideAge').innerHTML = row('age', '', 'Any age', '', !f.age) +
+    ages.map(a => row('age', a, a, items.filter(i => i.age === a).length, f.age === a)).join('');
   const seasons = [...new Set(items.map(i => i.season).filter(Boolean))];
-  $('#season').innerHTML = '<option value="">Any time of year</option>' + seasons.map(s => `<option${f.season === s ? ' selected' : ''}>${s}</option>`).join('');
+  $('#seasonBox').hidden = !seasons.length;
+  $('#sideSeason').innerHTML = row('season', '', 'Any time', '', !f.season) +
+    seasons.map(x => row('season', x, x, items.filter(i => i.season === x).length, f.season === x)).join('');
   $('#sort').value = f.sort;
   $('#unplanned').checked = f.unplanned;
   $('#unsure').checked = f.unsure;
 }
 
+function liveDot(k) {
+  const d = devs[k.id];
+  if (!d || !d.hasData) return '';
+  return `<span class="live ${d.ok ? 'ok' : 'old'}" title="${d.ok ? 'Read from the player ' + ago(d.checked) : 'Player not answering: ' + esc(d.error || '')}"></span>`;
+}
+
 function renderKids() {
-  const strip = [`<button class="kid${!f.kid ? ' on' : ''}" data-kid="" style="--kc:var(--accent)"><span class="av">★</span><span><b>Everything</b><small>${items.length} items</small></span></button>`];
+  // sidebar rows (computers) and round avatars (phones)
+  const side = [`<button class="row kidrow${!f.kid ? ' on' : ''}" data-kid=""><span class="av" style="--kc:var(--accent)">★</span>
+    <span class="who"><b>Everything</b><small>${items.length.toLocaleString()} items</small></span></button>`];
+  const strip = [`<button class="kid${!f.kid ? ' on' : ''}" data-kid="" style="--kc:var(--accent)"><span class="av">★</span><span class="nm">All</span></button>`];
   for (const k of plan.kids) {
     const u = kidUse(k.id), space = kidSpace(k), d = devs[k.id];
     const pct = space ? Math.min(100, u.after / space * 100) : 0;
-    const live = d && d.hasData ? `<span class="live ${d.ok ? 'ok' : 'old'}" title="${d.ok ? 'Read from the player ' + ago(d.checked) : 'Player not answering: ' + esc(d.error || '')}"></span>` : '';
+    side.push(`<button class="row kidrow${f.kid === k.id ? ' on' : ''}" data-kid="${k.id}" style="--kc:${k.color}">
+      <span class="av">${esc(initials(k.name))}${liveDot(k)}</span>
+      <span class="who"><b>${esc(k.name)}</b><small>${u.n} planned${d && d.hasData ? ` · ${u.nOn} on player` : ''}</small>
+      <span class="mini-bar${u.after > space && space ? ' over' : ''}"><i style="width:${pct}%"></i></span></span></button>`);
     strip.push(`<button class="kid${f.kid === k.id ? ' on' : ''}" data-kid="${k.id}" style="--kc:${k.color}">
-      <span class="av">${esc(initials(k.name))}${live}</span>
-      <span><b>${esc(k.name)}</b><small>${u.n} planned${d && d.hasData ? ` · ${u.nOn} on player` : ''}</small>
-      <span class="bar${u.after > space && space ? ' over' : ''}"><i style="width:${pct}%"></i></span></span></button>`);
+      <span class="av">${esc(initials(k.name))}${liveDot(k)}</span><span class="nm">${esc(k.name)}</span></button>`);
   }
+  $('#sideKids').innerHTML = side.join('');
   $('#kids').innerHTML = strip.join('');
   renderKidPanel();
 }
@@ -287,31 +302,32 @@ function renderKidPanel() {
   const w = b => (b / total * 100).toFixed(2) + '%';
   const left = space - u.after;
   let state;
-  if (!playersCfg[k.id]) state = "No player linked yet — add its address and PIN in the ⋯ menu to see what's on it.";
+  if (!playersCfg[k.id]) state = "No player linked yet. Add its address and PIN in the menu (top right) to see what's on it.";
   else if (!hasDev) state = d && d.error ? `Couldn't reach the player: ${esc(d.error)}` : 'Reading the player…';
   else state = `${esc(d.status && d.status.model ? deviceName(d.status.model) : k.device || 'Player')} · WalkieTales ${esc((d.status && d.status.version) || '?')}`
     + (d.status && d.status.battery != null ? ` · battery ${d.status.battery}%${d.status.charging ? ' ⚡' : ''}` : '') + ' · '
-    + (d.ok ? `read ${ago(d.checked)}` : `<b style="color:var(--warn)">not answering (${esc(d.error || 'asleep?')}) — showing what was there ${ago(d.checked)}</b>`);
+    + (d.ok ? `read ${ago(d.checked)}` : `<span style="color:var(--warn)">not answering (${esc(d.error || 'asleep?')}), showing what was there ${ago(d.checked)}</span>`);
   const tabs = [['plan', 'Planned', u.n]].concat(hasDev ? [['on', 'On the player', u.nOn], ['add', 'To add', u.nAdd],
     ['remove', 'To remove', u.nRemove], ['extra', 'Not in collection', u.nExtra]] : []);
   if (!hasDev && f.kidView !== 'plan') f.kidView = 'plan';
   el.style.setProperty('--kc', k.color);
-  el.innerHTML = `<div class="kp-head"><div><h2>${esc(k.name)}'s player</h2><div class="muted fine">${state}</div></div>
-      <div class="kp-actions">${playersCfg[k.id] ? `<button class="ghost" id="checkNow"${checking ? ' disabled' : ''}>${checking ? 'Checking…' : '↻ Check the player'}</button>` : ''}
-      ${hasDev && u.nOn ? `<button class="ghost" id="importOn">Add what's on it to the plan</button>` : ''}</div></div>
+  el.innerHTML = `<div class="kp-head">
+      <div class="kp-title"><span class="av">${esc(initials(k.name))}</span><div><h2>${esc(k.name)}</h2><div class="muted fine">${state}</div></div></div>
+      <div class="kp-actions">${playersCfg[k.id] ? `<button class="text-btn" id="checkNow"${checking ? ' disabled' : ''}>${checking ? 'Checking…' : '↻ Check the player'}</button>` : ''}
+      ${hasDev && u.nRemove ? `<button class="text-btn" id="importOn">Add what's on it to the plan</button>` : ''}</div></div>
     <div class="big-bar">
       <i style="width:${w(u.keep)};background:var(--kc)" title="Planned and on the player: ${gb(u.keep)}"></i>
       <i style="width:${w(u.add)};background:var(--kc);opacity:.45" title="Planned, still to copy: ${gb(u.add)}"></i>
-      <i style="width:${w(u.extra)};background:#7b7596" title="On the player, not in the collection: ${gb(u.extra)}"></i>
+      <i style="width:${w(u.extra)};background:#8a84a6" title="On the player, not in the collection: ${gb(u.extra)}"></i>
       <i class="stripe" style="width:${w(u.remove)}" title="On the player but not planned: ${gb(u.remove)}"></i></div>
     <div class="legend">
-      ${hasDev ? `<span style="--c:var(--kc)">On the player and planned ${gb(u.keep)}</span>` : ''}
+      ${hasDev ? `<span style="--c:var(--kc)">Planned, on the player ${gb(u.keep)}</span>` : ''}
       <span style="--c:color-mix(in srgb, var(--kc) 45%, transparent)">${hasDev ? 'To add' : 'Planned'} ${gb(u.add)}</span>
-      ${hasDev && u.extra ? `<span style="--c:#7b7596">Not in the collection ${gb(u.extra)}</span>` : ''}
-      ${hasDev && u.remove ? `<span class="st">Not planned (could go) ${gb(u.remove)}</span>` : ''}
-      <span style="--c:var(--panel-2)">${space ? (left >= 0 ? `${gb(left)} left after the plan` : `<b style="color:var(--bad)">${gb(-left)} too much</b>`) : 'free space unknown'}</span></div>
-    <div class="muted fine" style="margin-top:4px">${space ? `${gb(space)} for WalkieTales${hasDev ? ' (from the player)' : ''}` : ''}${u.unknown ? ` · ${u.unknown} planned without a size yet` : ''}</div>
-    <div class="kp-tabs">${tabs.map(([key, label, n]) => `<button class="chip${f.kidView === key ? ' on' : ''}" data-view="${key}">${label}<em>${n}</em></button>`).join('')}</div>`;
+      ${hasDev && u.extra ? `<span style="--c:#8a84a6">Not in the collection ${gb(u.extra)}</span>` : ''}
+      ${hasDev && u.remove ? `<span class="st">Not planned ${gb(u.remove)}</span>` : ''}
+      <span style="--c:var(--panel-2)">${space ? (left >= 0 ? `${gb(left)} free after the plan, of ${gb(space)}` : `<b style="color:var(--bad)">${gb(-left)} too much</b> for ${gb(space)}`) : 'free space unknown'}</span>
+      ${u.unknown ? `<span style="--c:transparent">${u.unknown} without a size yet</span>` : ''}</div>
+    <div class="tabs">${tabs.map(([key, label, n]) => `<button class="tab${f.kidView === key ? ' on' : ''}" data-view="${key}">${label}<em>${n}</em></button>`).join('')}</div>`;
   el.hidden = false;
 }
 
@@ -348,11 +364,17 @@ function apply(keepScroll) {
   }[f.sort];
   shown.sort(q.length && f.sort === 'az' ? (a, b) => scores.get(b.id) - scores.get(a.id) || a.title.localeCompare(b.title) : by);
   const total = shown.reduce((s, i) => s + i.est, 0);
-  $('#count').textContent = `${shown.length} shown${total ? ' · about ' + gb(total) : ''}`;
+  $('#count').innerHTML = `<b>${shown.length.toLocaleString()}</b> ${shown.length === 1 ? 'item' : 'items'}${total ? ' · about ' + gb(total) : ''}`;
+  renderActive();
   const y = window.scrollY;
   rendered = 0;
-  const filtered = f.type !== 'all' || f.age || f.season || f.unplanned || f.unsure || f.kid;
-  $('#grid').innerHTML = shown.length ? '' : `<div class="empty">Nothing matches${filtered ? ' with these filters' : ''}.${filtered ? '<br><br><button class="btn" id="clearFilters">Clear filters</button>' : ''}</div>`;
+  const filtered = f.type !== 'all' || f.age || f.season || f.unplanned || f.unsure;
+  const kname = f.kid && (plan.kids.find(k => k.id === f.kid) || {}).name;
+  const kidEmpty = { plan: `Nothing planned for ${kname} yet. Pick things from <b>Everything</b>${devs[f.kid] && devs[f.kid].on.size ? ', or use <b>Add what’s on it to the plan</b> above' : ''}.`,
+    on: `Nothing from the collection is on ${kname}'s player.`, add: `Everything planned for ${kname} is already on the player.`,
+    remove: `Everything on ${kname}'s player is planned.` }[f.kidView];
+  $('#grid').innerHTML = shown.length ? '' : `<div class="empty">${f.kid && !filtered && !q.length && kidEmpty ? kidEmpty
+    : `Nothing matches${filtered ? ' with these filters' : ''}.${filtered ? '<br><br><button class="btn" id="clearAll">Clear filters</button>' : ''}`}</div>`;
   more();
   if (keepScroll) { while (rendered < shown.length && document.body.scrollHeight < y + innerHeight) more(); window.scrollTo(0, y); }
 }
@@ -361,13 +383,27 @@ function apply(keepScroll) {
 function showExtra() {
   const d = devs[f.kid];
   const list = ((d && d.extra) || []).slice().sort((a, b) => a.made - b.made || a.name.localeCompare(b.name));
-  $('#count').textContent = `${list.length} folders on the player that aren't in the collection · ${gb(list.reduce((t, x) => t + x.bytes, 0))}`;
+  $('#count').innerHTML = `<b>${list.length}</b> folders on the player that aren't in the collection · ${gb(list.reduce((t, x) => t + x.bytes, 0))}`;
+  renderActive();
   $('#grid').innerHTML = list.length ? list.map(x => `<div class="card extra">
       <div class="cover"><div class="ph" style="background:linear-gradient(150deg,#7b7596,#1b1530)"><div><span>${x.made ? '🌙' : '📁'}</span>${esc(x.name)}</div></div></div>
       <div class="t">${esc(x.name)}</div><div class="s">${x.made ? 'Made by the player' : `${x.files} files · ${gb(x.bytes)}`}</div>
       <div class="meta"><span>${x.made ? 'Made by the player' : esc(x.category || '')}</span><span>${gb(x.bytes)}</span></div></div>`).join('')
     : '<div class="empty">Everything on this player is in the collection.</div>';
   $('#more').textContent = '';
+}
+
+/** A short line of what's filtering the list, with one way to clear it all. */
+function renderActive() {
+  const bits = [];
+  if (f.type !== 'all') bits.push((TYPES.find(t => t[0] === f.type) || [])[1]);
+  if (f.age) bits.push(f.age);
+  if (f.season) bits.push(f.season);
+  if (f.unplanned) bits.push('not planned yet');
+  if (f.unsure) bits.push('unsure matches');
+  $('#activeFilters').innerHTML = bits.length ? `<span class="af">${esc(bits.join(' · '))}</span><button class="text-btn" id="clearAll">Clear</button>` : '';
+  $('#countLine').innerHTML = $('#count').innerHTML + ' ' + $('#activeFilters').innerHTML.replace('id="clearAll"', 'id="clearAll2"');
+  $('#filtersBtn').innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5h18v2H3zm4 6h10v2H7zm3 6h4v2h-4z"/></svg> Filters${bits.length ? ` (${bits.length})` : ''}`;
 }
 
 function kidMarks(id) {
@@ -383,11 +419,11 @@ function card(it) {
   const len = it.minutes ? (it.minutes >= 60 ? `${Math.floor(it.minutes / 60)}h ${it.minutes % 60}m` : `${it.minutes}m`) : '';
   const sub = [it.by, len].filter(Boolean).join(' · ') || it.category;
   return `<button class="card${selected.has(it.id) ? ' sel' : ''}" data-id="${it.id}">
-    <div class="cover">${coverHtml(it)}<span class="badge">${TYPE_ICON[it.kind] || ''} ${it.season || TYPE_NAME[it.kind] || ''}</span>
+    <div class="cover">${coverHtml(it)}
       <span class="dots">${kidMarks(it.id)}</span>
       <span class="tick">✓</span></div>
     <div class="t">${esc(it.title)}</div><div class="s">${esc(sub)}</div>
-    <div class="meta"><span>${TYPE_ICON[it.kind] || ''} ${esc(it.season || TYPE_NAME[it.kind] || '')}${it.age ? ' · ' + esc(it.age) : ''}${it.est ? ' · ' + (it.exact ? '' : '≈') + gb(it.est) : ''}</span>
+    <div class="meta"><span>${esc(it.season || TYPE_NAME[it.kind] || '')}${it.age ? ' · ' + esc(it.age) : ''}${it.est ? ' · ' + (it.exact ? '' : '≈') + gb(it.est) : ''}</span>
       <span class="dots">${kidMarks(it.id)}</span></div></button>`;
 }
 
@@ -498,17 +534,33 @@ $('#kidEditor').addEventListener('click', async e => {
 
 let qTimer = 0;
 $('#q').addEventListener('input', e => { clearTimeout(qTimer); qTimer = setTimeout(() => { f.q = e.target.value; apply(); }, 150); });
-$('#types').addEventListener('click', e => { const b = e.target.closest('[data-type]'); if (!b) return; f.type = b.dataset.type; buildFilters(); apply(); });
-$('#age').addEventListener('change', e => { f.age = e.target.value; apply(); });
-$('#season').addEventListener('change', e => { f.season = e.target.value; apply(); });
+$('#side').addEventListener('click', e => {
+  const b = e.target.closest('[data-type],[data-age],[data-season]'); if (!b) return;
+  if ('type' in b.dataset) f.type = b.dataset.type;
+  if ('age' in b.dataset) f.age = b.dataset.age;
+  if ('season' in b.dataset) f.season = b.dataset.season;
+  buildFilters(); apply();
+});
+const drawer = on => document.body.classList.toggle('drawer', on);
+$('#filtersBtn').addEventListener('click', () => drawer(true));
+$('#sideClose').addEventListener('click', () => drawer(false));
+$('#scrim').addEventListener('click', () => drawer(false));
+document.addEventListener('click', e => {
+  if (e.target.id !== 'clearAll' && e.target.id !== 'clearAll2') return;
+  Object.assign(f, { type: 'all', age: '', season: '', unplanned: false, unsure: false });
+  buildFilters(); apply();
+});
 $('#sort').addEventListener('change', e => { f.sort = e.target.value; apply(); });
 $('#unplanned').addEventListener('change', e => { f.unplanned = e.target.checked; apply(); });
 $('#unsure').addEventListener('change', e => { f.unsure = e.target.checked; apply(); });
-$('#kids').addEventListener('click', e => {
+function pickKid(e) {
   const b = e.target.closest('[data-kid]'); if (!b) return;
   f.kid = f.kid === b.dataset.kid ? '' : b.dataset.kid;
+  drawer(false);
   renderKids(); apply(); window.scrollTo({ top: 0, behavior: 'smooth' });
-});
+}
+$('#kids').addEventListener('click', pickKid);
+$('#sideKids').addEventListener('click', pickKid);
 
 $('#grid').addEventListener('click', e => {
   if (e.target.id === 'clearFilters') {

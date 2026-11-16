@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Collection Planner</title>
-<meta name="theme-color" content="#1b1530">
+<meta name="theme-color" content="#16112a">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="icon-192.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -13,49 +13,65 @@
 <body>
 <header class="top">
   <div class="brand">
-    <img src="icon.svg" alt="" width="34" height="34">
+    <img src="icon.svg" alt="" width="32" height="32">
     <div><small>WalkieTales</small><b>Collection planner</b></div>
   </div>
   <label class="search"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 3a7 7 0 1 0 4.2 12.6l4.6 4.6 1.4-1.4-4.6-4.6A7 7 0 0 0 10 3zm0 2a5 5 0 1 1 0 10 5 5 0 0 1 0-10z"/></svg>
     <input id="q" type="search" placeholder="Search titles, authors, series…" autocomplete="off"></label>
   <span id="saveState" class="save-state" title="Your plan saves to the server as you go"></span>
-  <button id="menuBtn" class="icon-btn" aria-label="More" title="Export and settings">⋯</button>
+  <button id="menuBtn" class="icon-btn" aria-label="Export and settings" title="Export and settings">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg></button>
 </header>
 
-<nav id="kids" class="kids" aria-label="Kids"></nav>
+<!-- phones: the kids as round avatars, with the filters in a drawer -->
+<nav id="kids" class="kids-strip" aria-label="Kids"></nav>
 
-<section id="kidPanel" class="kid-panel" hidden></section>
+<div class="layout">
+  <aside id="side" class="side" aria-label="Players and filters">
+    <div class="side-head"><b>Filters</b><button class="icon-btn" id="sideClose" aria-label="Close filters">✕</button></div>
+    <section><h3>Players</h3><div id="sideKids" class="side-list"></div></section>
+    <section><h3>Type</h3><div id="sideType" class="side-list"></div></section>
+    <section><h3>Age</h3><div id="sideAge" class="side-list"></div></section>
+    <section id="seasonBox"><h3>Time of year</h3><div id="sideSeason" class="side-list"></div></section>
+    <section><h3>Show only</h3>
+      <label class="check"><input id="unplanned" type="checkbox"> Not planned yet</label>
+      <label class="check"><input id="unsure" type="checkbox"> Unsure matches</label>
+    </section>
+  </aside>
+  <div class="scrim" id="scrim"></div>
 
-<div class="filters">
-  <div id="types" class="chips" role="group" aria-label="Type"></div>
-  <div class="filter-row">
-    <select id="age" aria-label="Age"></select>
-    <select id="season" aria-label="Season"></select>
-    <select id="sort" aria-label="Sort">
-      <option value="az">A to Z</option>
-      <option value="long">Longest first</option>
-      <option value="short">Shortest first</option>
-      <option value="big">Biggest first</option>
-      <option value="series">By series</option>
-    </select>
-    <label class="toggle"><input id="unplanned" type="checkbox"> Not planned yet</label>
-    <label class="toggle"><input id="unsure" type="checkbox"> Unsure matches</label>
-    <span class="view-switch" role="group" aria-label="View">
-      <button id="viewGrid" class="ghost" aria-label="Pictures" title="Pictures">▦</button><button id="viewList" class="ghost" aria-label="List" title="List">☰</button>
-    </span>
-    <button id="selectBtn" class="ghost">Select</button>
+  <div class="main">
+    <section id="kidPanel" class="kid-panel" hidden></section>
+
+    <div class="toolbar">
+      <button id="filtersBtn" class="text-btn filters-btn">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5h18v2H3zm4 6h10v2H7zm3 6h4v2h-4z"/></svg> Filters</button>
+      <div class="count"><span id="count"></span><span id="activeFilters"></span></div>
+      <label class="sort"><span class="sort-word">Sort</span> <select id="sort" aria-label="Sort">
+        <option value="az">A to Z</option>
+        <option value="long">Longest first</option>
+        <option value="short">Shortest first</option>
+        <option value="big">Biggest first</option>
+        <option value="series">By series</option>
+      </select></label>
+      <span class="view-switch" role="group" aria-label="View">
+        <button id="viewGrid" class="icon-btn flat" aria-label="Pictures" title="Pictures"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h7v7H4zm9 0h7v7h-7zM4 13h7v7H4zm9 0h7v7h-7z"/></svg></button>
+        <button id="viewList" class="icon-btn flat" aria-label="List" title="List"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v2H4zm0 6h16v2H4zm0 6h16v2H4z"/></svg></button>
+      </span>
+      <button id="selectBtn" class="text-btn">Select</button>
+    </div>
+
+    <div class="count-line" id="countLine"></div>
+    <main id="grid" class="grid" aria-live="polite"></main>
+    <div id="more" class="more"></div>
   </div>
-  <div class="count" id="count"></div>
 </div>
-
-<main id="grid" class="grid" aria-live="polite"></main>
-<div id="more" class="more"></div>
 
 <div id="bulk" class="bulk" hidden>
   <span id="bulkCount">0 selected</span>
   <div id="bulkKids" class="bulk-kids"></div>
-  <button id="bulkAll" class="ghost">All shown</button>
-  <button id="bulkDone">Done</button>
+  <button id="bulkAll" class="text-btn">All shown</button>
+  <button id="bulkDone" class="btn">Done</button>
 </div>
 
 <div id="sheet" class="sheet" hidden>
@@ -66,17 +82,17 @@
 </div>
 
 <div id="menu" class="sheet" hidden>
-  <div class="sheet-card small" role="dialog" aria-modal="true" aria-label="More">
+  <div class="sheet-card small" role="dialog" aria-modal="true" aria-label="Export and settings">
     <button class="close icon-btn" data-close aria-label="Close">✕</button>
     <h2>Plan</h2>
     <p class="muted" id="planInfo"></p>
     <div class="menu-actions">
       <a class="btn" href="/api/plan.csv">Download the plan (spreadsheet, all details)</a>
-      <a class="btn ghost" href="/api/plan.json">Download the plan (JSON, all details)</a>
+      <a class="text-btn" href="/api/plan.json">Download as JSON</a>
     </div>
-    <h2>Kids</h2>
+    <h2>Kids and their players</h2>
     <div id="kidEditor"></div>
-    <button id="addKid" class="ghost">Add a kid</button>
+    <button id="addKid" class="text-btn">+ Add a kid</button>
     <p class="muted fine" id="catInfo"></p>
   </div>
 </div>
