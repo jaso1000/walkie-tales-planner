@@ -53,9 +53,16 @@ You need Python 3 with `pip install rapidfuzz pillow`.
 2. **Look everything up:** `python tools/enrich.py`. It searches Audible, Open Library, Deezer, Apple, TVmaze and
    Wikipedia, keeps the best match, and saves a 400 px cover for each item. Results are cached in `data/cache/`, so you
    can stop and restart it. `python tools/enrich.py --retry` takes another look at items it wasn't sure about.
-3. **Measure the real sizes** (optional) with the drive plugged in: `python tools/scan_drive.py E:\`. It also uses
-   cover art found on the drive for items without a good match.
-4. Copy `data/` to the server's `data/` folder (the container reads it from `/data`).
+3. **Measure the real sizes** (optional) with the drive plugged in: `python tools/scan_drive.py E:\` (or the folder
+   that holds `<Category>\<Name>`). It records the size, number of audio files and play time of each item (play time
+   needs `pip install mutagen`), uses cover art found on the drive for items without a good match, and remembers where
+   each item sits so the exports can give its `pathOnDrive`.
+4. **Check the categories** (optional): `python tools/check_categories.py` lists items that look filed in the wrong
+   place (song-length tracks in Audiobooks, chapters in Music, Christmas stories outside Christmas…). Put the ones you
+   agree with in `data/category-fixes.json` as `{"<id>": {"category": "Music", "why": "songs"}}` and rebuild with
+   `python tools/enrich.py --catalog`. Item ids don't change, so plans keep working, and the exports still give the
+   folder each item is really in on the drive.
+5. Copy `data/` to the server's `data/` folder (the container reads it from `/data`).
 
 Other tools: `tools/covers.py` finds covers for identified items that have none, and `tools/redo.py <file of ids>`
 looks particular items up again.

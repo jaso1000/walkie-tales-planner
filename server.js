@@ -63,13 +63,17 @@ function csvCell(v) {
 }
 
 // Everything known about one item, flat, for the exports: what's on the drive, what it was identified as, and how sure.
+// The folder on the drive that holds the <Category>\<Name> folders (written by tools/scan_drive.py)
+const driveFolder = () => readJson(path.join(DATA, 'drive.json'), {}).folder || '';
+
 function details(it) {
   const m = it.match || {};
   return {
-    id: it.id, nameOnDrive: it.name, folderOnDrive: it.folder, category: it.category, type: it.kind, season: it.season || '',
+    id: it.id, nameOnDrive: it.name, pathOnDrive: [driveFolder(), it.filedAs || it.category, it.name].filter(Boolean).join('\\'), sharedFolder: it.folder,
+    category: it.category, filedOnDriveAs: it.filedAs || it.category, type: it.kind, season: it.season || '',
     title: m.title || it.query || it.name, subtitle: m.subtitle || '', authors: (m.authors || []).join('; '),
     narrators: (m.narrators || []).join('; '), series: m.series || '', seriesNumber: m.seriesPos || '',
-    minutes: m.minutes || '', tracks: m.tracks || '', year: m.year || '', genres: (m.genres || []).join('; '),
+    minutes: it.minutes || m.minutes || '', tracks: m.tracks || '', year: m.year || '', genres: (m.genres || []).join('; '),
     ageGuess: it.age || '', bytes: it.bytes || '', files: it.files || '',
     identifiedBy: m.source || '', confidence: it.confidence || 0, sure: !!(it.match && it.confidence >= 80),
     link: m.link || '', coverUrl: (m.cover || [])[0] || '', coverFile: it.hasCover ? `covers/${it.id}.jpg` : '',

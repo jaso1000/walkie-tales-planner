@@ -304,9 +304,17 @@ def build_catalog(rows=None):
         if os.path.exists(p): items.append(json.load(open(p, encoding='utf-8')))
     sizes_path = os.path.join(DATA, 'sizes.json')  # written by tools/scan_drive.py once the drive is plugged in
     sizes = json.load(open(sizes_path, encoding='utf-8')) if os.path.exists(sizes_path) else {}
+    fixes_path = os.path.join(DATA, 'category-fixes.json')  # {id: {"category": ..., "why": ...}} from a check of the drive
+    fixes = json.load(open(fixes_path, encoding='utf-8')) if os.path.exists(fixes_path) else {}
     for it in items:
         s = sizes.get(it['id'])
-        if s: it.update(bytes=s.get('bytes'), files=s.get('files'), localCover=s.get('cover', False))
+        if s: it.update(bytes=s.get('bytes'), files=s.get('files'), minutes=s.get('minutes'), localCover=s.get('cover', False))
+        fx = fixes.get(it['id'])
+        if fx:  # the id stays the same so plans keep working; only where it is filed changes
+            it['filedAs'] = it['category']
+            it['category'] = fx['category']
+            it['kind'] = fx.get('kind') or kind_of(fx['category'], it['name'])
+            it['season'] = SEASONS.get(fx['category'], '')
     json.dump({'built': time.strftime('%Y-%m-%d %H:%M'), 'items': items},
               open(os.path.join(DATA, 'catalog.json'), 'w', encoding='utf-8'), ensure_ascii=False)
     found = sum(1 for i in items if i['match'])

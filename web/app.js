@@ -115,7 +115,7 @@ function prep(it) {
   it.unsure = !it.match || it.confidence < 80;
   it.title = (!it.unsure && m.title) || it.query || it.name; // unsure: the drive's own name says what it is better
   it.by = (m.authors || []).filter(Boolean).slice(0, 3).join(', ');
-  it.minutes = m.minutes || 0;
+  it.minutes = it.minutes || m.minutes || 0; // the drive's real play time first
   it.est = it.bytes ? it.bytes : it.minutes ? it.minutes * MB_PER_MIN * 1e6 : m.tracks ? m.tracks * MB_PER_TRACK * 1e6 : 0;
   it.exact = !!it.bytes;
   it.series = m.series || '';
@@ -500,7 +500,9 @@ function openDetail(id) {
   const it = byId.get(id), m = it.match || {};
   const len = it.minutes ? (it.minutes >= 60 ? `${Math.floor(it.minutes / 60)} h ${it.minutes % 60} min` : `${it.minutes} min`) : '';
   const facts = [TYPE_NAME[it.kind], it.season, len, m.tracks ? `${m.tracks} tracks` : '', it.age ? `Age: ${it.age} (guess)` : '',
-    m.year, it.est ? (it.exact ? gb(it.est) : `≈ ${gb(it.est)}`) : 'Size not known yet', ...(m.genres || []).slice(0, 3)].filter(Boolean);
+    m.year, it.est ? (it.exact ? gb(it.est) : `≈ ${gb(it.est)}`) : 'Size not known yet', it.files ? `${it.files} files` : '',
+    it.files === 0 ? 'No audio on the drive' : '', ...(m.genres || []).slice(0, 3),
+    it.filedAs ? `Filed on the drive under ${it.filedAs}` : ''].filter(Boolean);
   $('#detail').innerHTML = `<div class="detail">
     <div class="cover">${coverHtml(it)}</div>
     <div>
@@ -514,7 +516,7 @@ function openDetail(id) {
       <h2>Plan for</h2>
       <div class="assign">${plan.kids.length > 1 ? `<button data-assign="*" class="everyone${plan.kids.every(k => kidsOf(id).includes(k.id)) ? ' on' : ''}" style="--kc:var(--accent)"><span class="av">★</span>Everyone</button>` : ''}${plan.kids.map(k => `<button data-assign="${k.id}" class="${kidsOf(id).includes(k.id) ? 'on' : ''}" style="--kc:${k.color}"><span class="av">${esc(initials(k.name))}</span>${esc(k.name)}${devs[k.id] && devs[k.id].on.has(id) ? ' <small>· on player</small>' : ''}</button>`).join('')}</div>
       ${m.blurb ? `<p class="blurb">${esc(m.blurb)}</p>` : ''}
-      <div class="src">On the drive: <b>${esc(it.name)}</b><br>${esc(it.folder)}${it.files ? ` · ${it.files} files` : ''}
+      <div class="src">On the drive: <b>${esc(it.name)}</b><br>${it.bytes != null ? esc((it.filedAs || it.category) + ' folder') : esc(it.folder)}${it.files ? ` · ${it.files} files` : ''}
         ${m.link ? `<br>Details from <a href="${esc(m.link)}" target="_blank" rel="noopener noreferrer">${esc(m.source)}</a>` : ''}</div>
     </div></div>`;
   $('#detail').dataset.id = id;
