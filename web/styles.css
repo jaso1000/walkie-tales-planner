@@ -259,3 +259,7 @@ body.selecting .card .tick { display: grid; }
 /* iPhone home-screen app: keep the header clear of the clock and battery */
 .top { padding-top: calc(10px + env(safe-area-inset-top)); }
 .side { padding-top: calc(18px + env(safe-area-inset-top)); }
+
+/* "Everyone" sits first and a little apart from the kids */
+.assign .everyone { margin-right: 6px; }
+.assign .everyone:not(.on) .av { background: var(--accent); }

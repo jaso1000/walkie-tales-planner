@@ -512,7 +512,7 @@ function openDetail(id) {
       <div class="facts">${facts.map(x => `<span>${esc(x)}</span>`).join('')}</div>
       ${it.unsure ? `<div class="unsure">${it.match ? `Best guess: <b>${esc(m.title)}</b> — not sure it's the right one, so the details below may be for a different book in the series` : "Couldn't find this one online"}. The name on the drive is “${esc(it.name)}”.</div>` : ''}
       <h2>Plan for</h2>
-      <div class="assign">${plan.kids.map(k => `<button data-assign="${k.id}" class="${kidsOf(id).includes(k.id) ? 'on' : ''}" style="--kc:${k.color}"><span class="av">${esc(initials(k.name))}</span>${esc(k.name)}${devs[k.id] && devs[k.id].on.has(id) ? ' <small>· on player</small>' : ''}</button>`).join('')}</div>
+      <div class="assign">${plan.kids.length > 1 ? `<button data-assign="*" class="everyone${plan.kids.every(k => kidsOf(id).includes(k.id)) ? ' on' : ''}" style="--kc:var(--accent)"><span class="av">★</span>Everyone</button>` : ''}${plan.kids.map(k => `<button data-assign="${k.id}" class="${kidsOf(id).includes(k.id) ? 'on' : ''}" style="--kc:${k.color}"><span class="av">${esc(initials(k.name))}</span>${esc(k.name)}${devs[k.id] && devs[k.id].on.has(id) ? ' <small>· on player</small>' : ''}</button>`).join('')}</div>
       ${m.blurb ? `<p class="blurb">${esc(m.blurb)}</p>` : ''}
       <div class="src">On the drive: <b>${esc(it.name)}</b><br>${esc(it.folder)}${it.files ? ` · ${it.files} files` : ''}
         ${m.link ? `<br>Details from <a href="${esc(m.link)}" target="_blank" rel="noopener noreferrer">${esc(m.source)}</a>` : ''}</div>
@@ -630,8 +630,11 @@ $('#grid').addEventListener('click', e => {
 $('#detail').addEventListener('click', e => {
   const b = e.target.closest('[data-assign]'); if (!b) return;
   const id = $('#detail').dataset.id, on = !b.classList.contains('on');
-  setKid(id, b.dataset.assign, on);
-  b.classList.toggle('on', on);
+  if (b.dataset.assign === '*') plan.kids.forEach(k => setKid(id, k.id, on)); // everyone, or no one
+  else setKid(id, b.dataset.assign, on);
+  // keep every button (and Everyone) showing the real state
+  $('#detail').querySelectorAll('[data-assign]').forEach(x => x.classList.toggle('on',
+    x.dataset.assign === '*' ? plan.kids.every(k => kidsOf(id).includes(k.id)) : kidsOf(id).includes(x.dataset.assign)));
   save(); renderKids(); refreshCard(id);
   if (f.kid || f.unplanned) apply(true);
 });
@@ -649,7 +652,8 @@ function setSelecting(on) {
   document.querySelectorAll('.card.sel').forEach(c => c.classList.remove('sel'));
   $('#selectBtn').textContent = on ? 'Cancel' : 'Select';
   $('#bulk').hidden = !on;
-  $('#bulkKids').innerHTML = plan.kids.map(k => `<button data-bulk="${k.id}" style="--kc:${k.color}"><span class="av">${esc(initials(k.name))}</span>${esc(k.name)}</button>`).join('');
+  $('#bulkKids').innerHTML = (plan.kids.length > 1 ? `<button data-bulk="*" style="--kc:var(--accent)"><span class="av">★</span>Everyone</button>` : '') +
+    plan.kids.map(k => `<button data-bulk="${k.id}" style="--kc:${k.color}"><span class="av">${esc(initials(k.name))}</span>${esc(k.name)}</button>`).join('');
   bulkInfo();
 }
 function bulkInfo() {
@@ -663,11 +667,12 @@ $('#bulkAll').addEventListener('click', () => {
 });
 $('#bulkKids').addEventListener('click', e => {
   const b = e.target.closest('[data-bulk]'); if (!b || !selected.size) return;
-  const kid = plan.kids.find(k => k.id === b.dataset.bulk);
-  const allHave = [...selected].every(id => kidsOf(id).includes(kid.id));
-  selected.forEach(id => setKid(id, kid.id, !allHave));
+  const kids = b.dataset.bulk === '*' ? plan.kids : plan.kids.filter(k => k.id === b.dataset.bulk);
+  const who = b.dataset.bulk === '*' ? 'everyone' : kids[0].name;
+  const allHave = [...selected].every(id => kids.every(k => kidsOf(id).includes(k.id)));
+  selected.forEach(id => kids.forEach(k => setKid(id, k.id, !allHave)));
   save(); renderKids();
-  toast(allHave ? `Removed ${selected.size} from ${kid.name}` : `Added ${selected.size} to ${kid.name}`);
+  toast(allHave ? `Removed ${selected.size} from ${who}` : `Added ${selected.size} for ${who}`);
   setSelecting(false); apply(true);
 });
 $('#bulkDone').addEventListener('click', () => setSelecting(false));
