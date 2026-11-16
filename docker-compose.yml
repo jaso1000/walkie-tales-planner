@@ -1,0 +1,10 @@
+services:
+  planner:
+    image: ghcr.io/jaso1000/walkie-tales-planner:latest
+    build: .
+    container_name: walkie-tales-planner
+    restart: unless-stopped
+    ports:
+      - "8475:8475"
+    volumes:
+      - ./data:/data

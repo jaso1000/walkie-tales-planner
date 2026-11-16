@@ -1,0 +1,4 @@
+# Your own collection, plan, covers and lookup cache stay out of git
+data/
+__pycache__/
+*.pyc

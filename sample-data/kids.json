@@ -1,0 +1,5 @@
+[
+ {"id": "ava", "name": "Ava", "device": "Galaxy S9", "color": "#FF6B8A", "storageGB": 64, "spaceGB": 50},
+ {"id": "leo", "name": "Leo", "device": "Nexus 5", "color": "#4F9DFF", "storageGB": 32, "spaceGB": 20},
+ {"id": "mia", "name": "Mia", "device": "iPhone 7", "color": "#2EC4B6", "storageGB": 32, "spaceGB": 15}
+]

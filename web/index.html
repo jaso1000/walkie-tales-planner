@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Collection Planner</title>
+<meta name="theme-color" content="#1b1530">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<header class="top">
+  <div class="brand">
+    <img src="icon.svg" alt="" width="34" height="34">
+    <div><small>WalkieTales</small><b>Collection planner</b></div>
+  </div>
+  <label class="search"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 3a7 7 0 1 0 4.2 12.6l4.6 4.6 1.4-1.4-4.6-4.6A7 7 0 0 0 10 3zm0 2a5 5 0 1 1 0 10 5 5 0 0 1 0-10z"/></svg>
+    <input id="q" type="search" placeholder="Search titles, authors, series…" autocomplete="off"></label>
+  <span id="saveState" class="save-state" title="Your plan saves to the server as you go"></span>
+  <button id="menuBtn" class="icon-btn" aria-label="More" title="Export and settings">⋯</button>
+</header>
+
+<nav id="kids" class="kids" aria-label="Kids"></nav>
+
+<section id="kidPanel" class="kid-panel" hidden></section>
+
+<div class="filters">
+  <div id="types" class="chips" role="group" aria-label="Type"></div>
+  <div class="filter-row">
+    <select id="age" aria-label="Age"></select>
+    <select id="season" aria-label="Season"></select>
+    <select id="sort" aria-label="Sort">
+      <option value="az">A to Z</option>
+      <option value="long">Longest first</option>
+      <option value="short">Shortest first</option>
+      <option value="big">Biggest first</option>
+      <option value="series">By series</option>
+    </select>
+    <label class="toggle"><input id="unplanned" type="checkbox"> Not planned yet</label>
+    <label class="toggle"><input id="unsure" type="checkbox"> Unsure matches</label>
+    <span class="view-switch" role="group" aria-label="View">
+      <button id="viewGrid" class="ghost" aria-label="Pictures" title="Pictures">▦</button><button id="viewList" class="ghost" aria-label="List" title="List">☰</button>
+    </span>
+    <button id="selectBtn" class="ghost">Select</button>
+  </div>
+  <div class="count" id="count"></div>
+</div>
+
+<main id="grid" class="grid" aria-live="polite"></main>
+<div id="more" class="more"></div>
+
+<div id="bulk" class="bulk" hidden>
+  <span id="bulkCount">0 selected</span>
+  <div id="bulkKids" class="bulk-kids"></div>
+  <button id="bulkAll" class="ghost">All shown</button>
+  <button id="bulkDone">Done</button>
+</div>
+
+<div id="sheet" class="sheet" hidden>
+  <div class="sheet-card" role="dialog" aria-modal="true" aria-labelledby="dTitle">
+    <button class="close icon-btn" data-close aria-label="Close">✕</button>
+    <div id="detail"></div>
+  </div>
+</div>
+
+<div id="menu" class="sheet" hidden>
+  <div class="sheet-card small" role="dialog" aria-modal="true" aria-label="More">
+    <button class="close icon-btn" data-close aria-label="Close">✕</button>
+    <h2>Plan</h2>
+    <p class="muted" id="planInfo"></p>
+    <div class="menu-actions">
+      <a class="btn" href="/api/plan.csv">Download the plan (spreadsheet, all details)</a>
+      <a class="btn ghost" href="/api/plan.json">Download the plan (JSON, all details)</a>
+    </div>
+    <h2>Kids</h2>
+    <div id="kidEditor"></div>
+    <button id="addKid" class="ghost">Add a kid</button>
+    <p class="muted fine" id="catInfo"></p>
+  </div>
+</div>
+
+<div id="toast" class="toast" role="status"></div>
+<script src="app.js"></script>
+</body>
+</html>
