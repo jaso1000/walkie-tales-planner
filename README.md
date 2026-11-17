@@ -49,7 +49,9 @@ You need Python 3 with `pip install rapidfuzz pillow`.
 
 1. **List your collection** in `data/collection.csv` with three columns: `Category` (Audiobooks, Music, Podcasts,
    TV Episodes, Movies, Tonies, Christmas, Easter, Halloween), `Name` (the folder or file name) and `From` (the folder
-   it's in, relative to the drive). `sample-data/` has an example, plus a `kids.json` to start from.
+   it's in, relative to the drive). `sample-data/` has an example, plus a `kids.json` to start from. For something
+   that's only on the players so far, put `On the players (not on the drive yet)` as `From`: it's matched like
+   everything else, and the exports leave its `pathOnDrive` empty.
 2. **Look everything up:** `python tools/enrich.py`. It searches Audible, Open Library, Deezer, Apple, TVmaze and
    Wikipedia, keeps the best match, and saves a 400 px cover for each item. Results are cached in `data/cache/`, so you
    can stop and restart it. `python tools/enrich.py --retry` takes another look at items it wasn't sure about.

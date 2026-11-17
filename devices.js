@@ -16,7 +16,19 @@ module.exports = function devices(DATA, readJson) {
     fs.writeFileSync(PLAYERS, JSON.stringify(p, null, 1));
     try { fs.chmodSync(PLAYERS, 0o600); } catch { /* not on Windows */ }
   };
-  const cache = () => readJson(CACHE, { updated: null, kids: {} });
+  // The last reading of every player. When the catalogue has changed since, its folders are matched again here,
+  // so new items show as "on the player" straight away without waking anyone's phone.
+  function cache() {
+    const out = readJson(CACHE, { updated: null, kids: {} });
+    let built = '';
+    try { built = String(fs.statSync(path.join(DATA, 'catalog.json')).mtimeMs); } catch { return out; }
+    if (out.matchedTo === built) return out;
+    const items = readJson(path.join(DATA, 'catalog.json'), { items: [] }).items;
+    for (const r of Object.values(out.kids)) if (r.folders) r.matches = matchFolders(r.folders, items);
+    out.matchedTo = built;
+    try { fs.writeFileSync(CACHE, JSON.stringify(out)); } catch { /* read-only: match again next time */ }
+    return out;
+  }
 
   function get(base, pin, p, timeout = 15000) {
     return new Promise((resolve, reject) => {
@@ -122,6 +134,7 @@ module.exports = function devices(DATA, readJson) {
       });
       for (const k of Object.keys(out.kids)) if (!ps[k]) delete out.kids[k];
       out.updated = new Date().toISOString();
+      delete out.matchedTo; // matched just now; cache() notes the catalogue next time
       fs.writeFileSync(CACHE, JSON.stringify(out));
       return out;
     })();

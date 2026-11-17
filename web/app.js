@@ -179,7 +179,7 @@ async function loadDevices(fresh) {
           on.set(m.id, (on.get(m.id) || 0) + fo.bytes);
           const it = byId.get(m.id);
           if (!it.bytes && fo.bytes && !it.fromPlayer) { it.estBefore = it.est; it.est = fo.bytes; it.exact = true; it.fromPlayer = true; }
-        } else extra.push({ ...fo, made: PLAYER_MADE.has(fo.name.toLowerCase()) });
+        } else extra.push({ ...fo, made: fo.live || PLAYER_MADE.has(fo.name.toLowerCase()) }); // radio streams too
       }
       devs[kid] = { ...r, on, extra, used, hasData: !!r.folders };
     }
@@ -348,8 +348,6 @@ function renderKidPanel() {
   const k = plan.kids.find(x => x.id === f.kid), el = $('#kidPanel');
   if (!k) { el.hidden = true; return; }
   const u = kidUse(k.id), space = kidSpace(k), d = devs[k.id], hasDev = d && d.hasData;
-  const total = Math.max(space, u.after + u.remove, 1);
-  const w = b => (b / total * 100).toFixed(2) + '%';
   const left = space - u.after;
   let state;
   if (!playersCfg[k.id]) state = "No player linked yet. Add its address and PIN in the menu (top right) to see what's on it.";
@@ -357,27 +355,34 @@ function renderKidPanel() {
   else state = `${esc(d.status && d.status.model ? deviceName(d.status.model) : k.device || 'Player')} · WalkieTales ${esc((d.status && d.status.version) || '?')}`
     + (d.status && d.status.battery != null ? ` · battery ${d.status.battery}%${d.status.charging ? ' ⚡' : ''}` : '') + ' · '
     + (d.ok ? `read ${ago(d.checked)}` : `<span style="color:var(--warn)">not answering (${esc(d.error || 'asleep?')}), showing what was there ${ago(d.checked)}</span>`);
-  const tabs = [['plan', 'Planned', u.n], ['fav', '♥ Favourites', favCount(k.id)]].concat(hasDev ? [['on', 'On the player', u.nOn], ['add', 'To add', u.nAdd],
-    ['remove', 'To remove', u.nRemove], ['extra', 'Not in collection', u.nExtra]] : []);
   if (!hasDev && !['plan', 'fav'].includes(f.kidView)) f.kidView = 'plan';
+  const nKeep = u.nOn - u.nRemove;
+  // One box per question a grown-up asks; tapping a box shows those items below.
+  const box = (key, icon, n, title, note, size) => `<button class="kbox${f.kidView === key ? ' on' : ''}" data-view="${key}">
+      <span class="ki">${icon}</span><b>${n.toLocaleString()}</b><span class="kt">${title}</span>
+      <small>${note}${size ? ` · ${gb(size)}` : ''}</small></button>`;
+  const boxes = [box('plan', '📋', u.n, 'Planned', `everything picked for ${esc(k.name)}`, u.bytes),
+    box('fav', '♥', favCount(k.id), 'Favourites', 'the ones they love')];
+  const match = !hasDev ? [] : [
+    box('keep', '✅', nKeep, 'Already there', 'planned and on the player', u.keep),
+    box('add', '➕', u.nAdd, 'Needs copying', 'planned, not on the player yet', u.add),
+    box('remove', '➖', u.nRemove, 'Could come off', 'on the player, not planned', u.remove),
+  ].concat(u.nExtra ? [box('extra', '📁', u.nExtra, 'Other folders', 'on the player, not in the collection', u.extra)] : []);
+  const pct = b => Math.min(100, b / Math.max(space, 1) * 100).toFixed(1) + '%';
+  const over = space && left < 0;
   el.style.setProperty('--kc', k.color);
   el.innerHTML = `<div class="kp-head">
       <div class="kp-title"><span class="av">${esc(initials(k.name))}</span><div><h2>${esc(k.name)}</h2><div class="muted fine">${state}</div></div></div>
       <div class="kp-actions">${playersCfg[k.id] ? `<button class="text-btn" id="checkNow"${checking ? ' disabled' : ''}>${checking ? 'Checking…' : '↻ Check the player'}</button>` : ''}
       ${hasDev && u.nRemove ? `<button class="text-btn" id="importOn">Add what's on it to the plan</button>` : ''}</div></div>
-    <div class="big-bar">
-      <i style="width:${w(u.keep)};background:var(--kc)" title="Planned and on the player: ${gb(u.keep)}"></i>
-      <i style="width:${w(u.add)};background:var(--kc);opacity:.45" title="Planned, still to copy: ${gb(u.add)}"></i>
-      <i style="width:${w(u.extra)};background:#8a84a6" title="On the player, not in the collection: ${gb(u.extra)}"></i>
-      <i class="stripe" style="width:${w(u.remove)}" title="On the player but not planned: ${gb(u.remove)}"></i></div>
-    <div class="legend">
-      ${hasDev ? `<span style="--c:var(--kc)">Planned, on the player ${gb(u.keep)}</span>` : ''}
-      <span style="--c:color-mix(in srgb, var(--kc) 45%, transparent)">${hasDev ? 'To add' : 'Planned'} ${gb(u.add)}</span>
-      ${hasDev && u.extra ? `<span style="--c:#8a84a6">Not in the collection ${gb(u.extra)}</span>` : ''}
-      ${hasDev && u.remove ? `<span class="st">Not planned ${gb(u.remove)}</span>` : ''}
-      <span style="--c:var(--panel-2)">${space ? (left >= 0 ? `${gb(left)} free after the plan, of ${gb(space)}` : `<b style="color:var(--bad)">${gb(-left)} too much</b> for ${gb(space)}`) : 'free space unknown'}</span>
-      ${u.unknown ? `<span style="--c:transparent">${u.unknown} without a size yet</span>` : ''}</div>
-    <div class="tabs">${tabs.map(([key, label, n]) => `<button class="tab${f.kidView === key ? ' on' : ''}" data-view="${key}">${label}<em>${n}</em></button>`).join('')}</div>`;
+    <div class="space-line">${space
+      ? (over ? `<b class="bad">${gb(-left)} too much.</b> The plan needs ${gb(u.after)}, the player has room for ${gb(space)}.`
+              : `<b>${gb(left)} free</b> once the plan is on the player <span class="muted">(it needs ${gb(u.after)} of ${gb(space)})</span>`)
+      : `The plan needs ${gb(u.after)}. <span class="muted">Free space on the player isn't known yet.</span>`}
+      ${u.unknown ? `<span class="muted"> · ${u.unknown} without a size yet</span>` : ''}</div>
+    ${space ? `<div class="space-bar${over ? ' over' : ''}"><i style="width:${pct(u.after)}"></i></div>` : ''}
+    <h4 class="kh">${esc(k.name)}'s plan</h4><div class="kboxes">${boxes.join('')}</div>
+    ${match.length ? `<h4 class="kh">To make the player match the plan</h4><div class="kboxes">${match.join('')}</div>` : ''}`;
   el.hidden = false;
 }
 
@@ -386,12 +391,13 @@ const deviceName = m => MODELS[m] || m;
 
 function kidFilter(id) {
   const planned = kidsOf(id).includes(f.kid), on = !!(devs[f.kid] && devs[f.kid].on.has(id));
-  const v = { plan: planned, fav: favsOf(id).includes(f.kid), on, add: planned && !on, remove: on && !planned }[f.kidView];
+  const v = { plan: planned, fav: favsOf(id).includes(f.kid), keep: planned && on, on, add: planned && !on, remove: on && !planned }[f.kidView];
   return v === undefined ? planned : v;
 }
 
 function apply(keepScroll) {
   store.set('filters', { ...f, q: '' });
+  if (f.kid && f.kidView === 'on') f.kidView = 'keep'; // the old "On the player" tab
   if (f.kid && f.kidView === 'extra') return showExtra();
   const q = norm(f.q).split(' ').filter(Boolean);
   // keep two-word names together so "iron man" or "paw patrol" match as one
@@ -426,7 +432,7 @@ function apply(keepScroll) {
   const kname = f.kid && (plan.kids.find(k => k.id === f.kid) || {}).name;
   const kidEmpty = { plan: `Nothing planned for ${kname} yet. Pick things from <b>Everything</b>${devs[f.kid] && devs[f.kid].on.size ? ', or use <b>Add what’s on it to the plan</b> above' : ''}.`,
     on: `Nothing from the collection is on ${kname}'s player.`, add: `Everything planned for ${kname} is already on the player.`,
-    remove: `Everything on ${kname}'s player is planned.`,
+    remove: `Everything on ${kname}'s player is planned.`, keep: `None of ${kname}'s plan is on the player yet.`,
     fav: `No favourites for ${kname} yet. Open an item and tap the ♥ next to ${kname}.` }[f.kidView];
   $('#grid').innerHTML = shown.length ? '' : `<div class="empty">${f.kid && !filtered && !q.length && kidEmpty ? kidEmpty
     : `Nothing matches${filtered ? ' with these filters' : ''}.${filtered ? '<br><br><button class="btn" id="clearAll">Clear filters</button>' : ''}`}</div>`;

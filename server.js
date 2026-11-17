@@ -69,7 +69,7 @@ const driveFolder = () => readJson(path.join(DATA, 'drive.json'), {}).folder || 
 function details(it) {
   const m = it.match || {};
   return {
-    id: it.id, nameOnDrive: it.name, pathOnDrive: [driveFolder(), it.filedAs || it.category, it.name].filter(Boolean).join('\\'), sharedFolder: it.folder,
+    id: it.id, nameOnDrive: it.name, pathOnDrive: /^On the players/.test(it.folder || '') ? '' : [driveFolder(), it.filedAs || it.category, it.name].filter(Boolean).join('\\'), sharedFolder: it.folder,
     category: it.category, filedOnDriveAs: it.filedAs || it.category, type: it.kind, season: it.season || '',
     title: m.title || it.query || it.name, subtitle: m.subtitle || '', authors: (m.authors || []).join('; '),
     narrators: (m.narrators || []).join('; '), series: m.series || '', seriesNumber: m.seriesPos || '',
