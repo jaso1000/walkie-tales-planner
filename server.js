@@ -88,7 +88,7 @@ const driveFolder = () => readJson(path.join(DATA, 'drive.json'), {}).folder || 
 function details(it) {
   const m = it.match || {};
   return {
-    id: it.id, nameOnDrive: it.name, streamUrl: it.streamUrl || '', pathOnDrive: it.kind === 'radio' || /^On the players/.test(it.folder || '') ? '' : [driveFolder(), it.filedAs || it.category, it.name].filter(Boolean).join('\\'), sharedFolder: it.folder,
+    id: it.id, nameOnDrive: it.name, streamUrl: it.streamUrl || '', pathOnDrive: it.kind === 'radio' || /^On the players/.test(it.folder || '') ? '' : [driveFolder(), it.filedAs || it.category, it.inside, it.name].filter(Boolean).join('\\'), sharedFolder: it.folder,
     category: it.category, filedOnDriveAs: it.filedAs || it.category, type: it.kind, season: it.season || '',
     title: m.title || it.query || it.name, subtitle: m.subtitle || '', authors: (m.authors || []).join('; '),
     narrators: (m.narrators || []).join('; '), series: m.series || '', seriesNumber: m.seriesPos || '',
@@ -135,7 +135,7 @@ function exportJson() {
   };
 }
 
-const devices = require('./devices')(DATA, readJson, () => catalog().items, [path.join(DATA, 'catalog.json'), RADIO]);
+const devices = require('./devices')(DATA, readJson, () => catalog().items, [path.join(DATA, 'catalog.json'), RADIO, path.join(DATA, 'folder-links.json')]);
 
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://x');

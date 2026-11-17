@@ -301,7 +301,10 @@ def build_catalog(rows=None):
     items = []
     for r in rows:
         p = os.path.join(DATA, 'cache', item_id(r) + '.json')
-        if os.path.exists(p): items.append(json.load(open(p, encoding='utf-8')))
+        if os.path.exists(p):
+            it = json.load(open(p, encoding='utf-8'))
+            if r.get('Inside'): it['inside'] = r['Inside']  # sits inside another folder on the drive
+            items.append(it)
     sizes_path = os.path.join(DATA, 'sizes.json')  # written by tools/scan_drive.py once the drive is plugged in
     sizes = json.load(open(sizes_path, encoding='utf-8')) if os.path.exists(sizes_path) else {}
     fixes_path = os.path.join(DATA, 'category-fixes.json')  # {id: {"category": ..., "why": ...}} from a check of the drive

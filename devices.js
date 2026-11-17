@@ -74,8 +74,13 @@ module.exports = function devices(DATA, readJson, loadItems, sources) {
       keys: [it.name, it.query, it.match && it.confidence >= 80 && it.match.title].filter(Boolean)
         .map(k => { const t = toks(k); return { n: norm(k), t, d: nums(t) }; }),
     }));
+    // folders copied from the plan: the copy tool notes which item each one is ({ "folder name": itemId })
+    const links = {}, known = new Set(items.map(it => it.id));
+    for (const [k, v] of Object.entries(readJson(path.join(DATA, 'folder-links.json'), {}))) links[k.normalize('NFC')] = v;
     const out = {};
     for (const f of folders) {
+      const link = links[f.name.normalize('NFC')]; // iPhones keep accented names decomposed
+      if (known.has(link)) { out[f.name] = { id: link, score: 100, linked: true }; continue; }
       const fn = norm(f.name), ft = toks(f.name), fd = nums(ft), kinds = KIND[f.category];
       let best = null, bestScore = 0;
       for (const c of cands) for (const k of c.keys) {

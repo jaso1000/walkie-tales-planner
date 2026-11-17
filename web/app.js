@@ -547,7 +547,7 @@ function openDetail(id) {
       ${m.blurb ? `<p class="blurb">${esc(m.blurb)}</p>` : ''}
       ${it.kind === 'radio' ? `<div class="src">Stream: <a href="${esc(it.streamUrl)}" target="_blank" rel="noopener noreferrer">${esc(it.streamUrl)}</a>
         <br><button class="text-btn danger" data-delradio="${it.id}">Remove this station from the collection</button></div>` : ''}
-      <div class="src"${it.kind === 'radio' ? ' hidden' : ''}>On the drive: <b>${esc(it.name)}</b><br>${it.bytes != null ? esc((it.filedAs || it.category) + ' folder') : esc(it.folder)}${it.files ? ` · ${it.files} files` : ''}
+      <div class="src"${it.kind === 'radio' ? ' hidden' : ''}>On the drive: <b>${esc(it.name)}</b><br>${it.bytes != null ? esc([it.filedAs || it.category, it.inside].filter(Boolean).join(' › ') + ' folder') : esc(it.folder)}${it.files ? ` · ${it.files} files` : ''}
         ${m.link ? `<br>Details from <a href="${esc(m.link)}" target="_blank" rel="noopener noreferrer">${esc(m.source)}</a>` : ''}</div>
     </div></div>`;
   $('#detail').dataset.id = id;

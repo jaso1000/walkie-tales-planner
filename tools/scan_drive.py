@@ -70,7 +70,10 @@ def measure(path):
 
 def locate(root, row):
     name = row['Name']
-    for base in (os.path.join(root, row['Category']), os.path.join(root, *row['From'].split('\\'))):
+    bases = [os.path.join(root, row['Category']), os.path.join(root, *row['From'].split('\\'))]
+    if row.get('Inside'):  # an item split out of a bigger folder: <Category>\<Inside>\<Name>
+        bases.insert(0, os.path.join(root, row['Category'], *row['Inside'].split('\\')))
+    for base in bases:
         for cand in (name, name + '.zip', name + '.mp3', name + '.m4b'):
             p = os.path.join(base, cand)
             if os.path.exists(p): return p
