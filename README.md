@@ -73,8 +73,9 @@ You need Python 3 with `pip install rapidfuzz pillow`.
    folder each item is really in on the drive.
 5. Copy `data/` to the server's `data/` folder (the container reads it from `/data`).
 
-Other tools: `tools/covers.py` finds covers for identified items that have none, and `tools/redo.py <file of ids>`
-looks particular items up again.
+Other tools: `tools/covers.py` finds covers for identified items that have none, `tools/embedded_covers.py` takes
+the artwork built into the audio files on the drive for items still without one (after a drive scan), and
+`tools/redo.py <file of ids>` looks particular items up again.
 
 ## Your data
 

@@ -429,6 +429,7 @@ function apply(keepScroll) {
     long: (a, b) => b.minutes - a.minutes || a.title.localeCompare(b.title),
     short: (a, b) => (a.minutes || 1e9) - (b.minutes || 1e9),
     big: (a, b) => b.est - a.est,
+    small: (a, b) => (a.est || 1e15) - (b.est || 1e15) || a.title.localeCompare(b.title), // unknown sizes last
     series: (a, b) => (a.series || '~').localeCompare(b.series || '~') || (parseFloat(a.match?.seriesPos) || 0) - (parseFloat(b.match?.seriesPos) || 0) || a.title.localeCompare(b.title),
   }[f.sort];
   shown.sort(q.length && f.sort === 'az' ? (a, b) => scores.get(b.id) - scores.get(a.id) || a.title.localeCompare(b.title) : by);
