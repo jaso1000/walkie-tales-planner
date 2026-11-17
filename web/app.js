@@ -19,7 +19,8 @@ const store = {
   set(k, v) { try { localStorage.setItem('planner.' + k, JSON.stringify(v)); } catch { /* private mode */ } },
 };
 
-let items = [], byId = new Map(), plan = { version: 0, kids: [], assign: {} }, catalogBuilt = '';
+let items = [], byId = new Map(), plan = { version: 0, kids: [], assign: {}, fav: {} }, catalogBuilt = '';
+const scrollMemo = {}; // where each view was scrolled to, so coming back to it lands in the same place
 let devs = {}, devUpdated = null, playersCfg = {}, checking = false; // what's on each child's player right now
 const PLAYER_MADE = new Set(['sleep sounds', 'messages', 'app update']); // folders the player makes itself
 const f = Object.assign({ q: '', type: 'all', age: '', season: '', len: '', topic: '', onp: '', sort: 'az', kid: '', kidView: 'plan',
@@ -134,7 +135,7 @@ async function load() {
   items = (cat.items || []).map(prep);
   catalogBuilt = cat.built || '';
   byId = new Map(items.map(i => [i.id, i]));
-  plan = p;
+  plan = p; plan.fav = plan.fav || {};
   if (plan.saved) saveState('Saved ✓');
   await loadDevices();
   buildFilters();
@@ -202,7 +203,7 @@ async function poll() {
   if (dirty || saving || document.hidden) return;
   try {
     const p = await fetch('/api/plan').then(r => r.json());
-    if (p.version !== plan.version) { plan = p; renderKids(); apply(true); }
+    if (p.version !== plan.version) { plan = p; plan.fav = plan.fav || {}; renderKids(); apply(true); }
   } catch { /* offline for a moment */ }
 }
 
@@ -216,8 +217,8 @@ function save() {
       const r = await fetch('/api/plan', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(plan) });
       const p = await r.json();
       if (r.status === 409) { // changed on another device: keep theirs, then re-apply this change on top
-        const mine = plan.assign, kids = plan.kids;
-        plan = p; plan.assign = mine; plan.kids = kids;
+        const mine = plan.assign, kids = plan.kids, fav = plan.fav;
+        plan = p; plan.assign = mine; plan.kids = kids; plan.fav = fav;
         saving = false; return save();
       }
       if (r.ok) { plan.version = p.version; plan.saved = p.saved; dirty = false; saveState('Saved ✓'); }
@@ -234,7 +235,17 @@ function setKid(id, kidId, on) {
   const cur = new Set(kidsOf(id));
   on ? cur.add(kidId) : cur.delete(kidId);
   if (cur.size) plan.assign[id] = [...cur]; else delete plan.assign[id];
+  if (!on) setFav(id, kidId, false); // a favourite is always planned
 }
+const favsOf = id => (plan.fav || {})[id] || [];
+function setFav(id, kidId, on) {
+  plan.fav = plan.fav || {};
+  const cur = new Set(favsOf(id));
+  on ? cur.add(kidId) : cur.delete(kidId);
+  if (cur.size) plan.fav[id] = [...cur]; else delete plan.fav[id];
+  if (on && !kidsOf(id).includes(kidId)) setKid(id, kidId, true);
+}
+const favCount = kidId => Object.values(plan.fav || {}).filter(ks => ks.includes(kidId)).length;
 function kidUse(kidId) {
   const d = devs[kidId] || { on: new Map(), extra: [] };
   let bytes = 0, unknown = 0, n = 0, keep = 0, add = 0, nAdd = 0; const byType = {};
@@ -346,9 +357,9 @@ function renderKidPanel() {
   else state = `${esc(d.status && d.status.model ? deviceName(d.status.model) : k.device || 'Player')} · WalkieTales ${esc((d.status && d.status.version) || '?')}`
     + (d.status && d.status.battery != null ? ` · battery ${d.status.battery}%${d.status.charging ? ' ⚡' : ''}` : '') + ' · '
     + (d.ok ? `read ${ago(d.checked)}` : `<span style="color:var(--warn)">not answering (${esc(d.error || 'asleep?')}), showing what was there ${ago(d.checked)}</span>`);
-  const tabs = [['plan', 'Planned', u.n]].concat(hasDev ? [['on', 'On the player', u.nOn], ['add', 'To add', u.nAdd],
+  const tabs = [['plan', 'Planned', u.n], ['fav', '♥ Favourites', favCount(k.id)]].concat(hasDev ? [['on', 'On the player', u.nOn], ['add', 'To add', u.nAdd],
     ['remove', 'To remove', u.nRemove], ['extra', 'Not in collection', u.nExtra]] : []);
-  if (!hasDev && f.kidView !== 'plan') f.kidView = 'plan';
+  if (!hasDev && !['plan', 'fav'].includes(f.kidView)) f.kidView = 'plan';
   el.style.setProperty('--kc', k.color);
   el.innerHTML = `<div class="kp-head">
       <div class="kp-title"><span class="av">${esc(initials(k.name))}</span><div><h2>${esc(k.name)}</h2><div class="muted fine">${state}</div></div></div>
@@ -375,7 +386,7 @@ const deviceName = m => MODELS[m] || m;
 
 function kidFilter(id) {
   const planned = kidsOf(id).includes(f.kid), on = !!(devs[f.kid] && devs[f.kid].on.has(id));
-  const v = { plan: planned, on, add: planned && !on, remove: on && !planned }[f.kidView];
+  const v = { plan: planned, fav: favsOf(id).includes(f.kid), on, add: planned && !on, remove: on && !planned }[f.kidView];
   return v === undefined ? planned : v;
 }
 
@@ -409,17 +420,18 @@ function apply(keepScroll) {
   const total = shown.reduce((s, i) => s + i.est, 0);
   $('#count').innerHTML = `<b>${shown.length.toLocaleString()}</b> ${shown.length === 1 ? 'item' : 'items'}${total ? ' · about ' + gb(total) : ''}`;
   renderActive();
-  const y = window.scrollY;
+  const y = typeof keepScroll === 'number' ? keepScroll : window.scrollY;
   rendered = 0;
   const filtered = f.type !== 'all' || f.age || f.season || f.len || f.topic || f.onp || f.unplanned || f.unsure || f.hasCover;
   const kname = f.kid && (plan.kids.find(k => k.id === f.kid) || {}).name;
   const kidEmpty = { plan: `Nothing planned for ${kname} yet. Pick things from <b>Everything</b>${devs[f.kid] && devs[f.kid].on.size ? ', or use <b>Add what’s on it to the plan</b> above' : ''}.`,
     on: `Nothing from the collection is on ${kname}'s player.`, add: `Everything planned for ${kname} is already on the player.`,
-    remove: `Everything on ${kname}'s player is planned.` }[f.kidView];
+    remove: `Everything on ${kname}'s player is planned.`,
+    fav: `No favourites for ${kname} yet. Open an item and tap the ♥ next to ${kname}.` }[f.kidView];
   $('#grid').innerHTML = shown.length ? '' : `<div class="empty">${f.kid && !filtered && !q.length && kidEmpty ? kidEmpty
     : `Nothing matches${filtered ? ' with these filters' : ''}.${filtered ? '<br><br><button class="btn" id="clearAll">Clear filters</button>' : ''}`}</div>`;
   more();
-  if (keepScroll) { while (rendered < shown.length && document.body.scrollHeight < y + innerHeight) more(); window.scrollTo(0, y); }
+  if (keepScroll || keepScroll === 0) { while (rendered < shown.length && document.body.scrollHeight < y + innerHeight) more(); window.scrollTo(0, y); }
 }
 
 /** Folders on the player that aren't in the collection (and the player's own Sleep Sounds and Messages). */
@@ -457,8 +469,9 @@ function kidMarks(id) {
   return plan.kids.map(k => {
     const planned = kidsOf(id).includes(k.id), on = f.kid === k.id && !!(devs[k.id] && devs[k.id].on.has(id));
     if (!planned && !on) return '';
-    const t = `${k.name}: ${planned && on ? 'planned, already on the player' : planned ? 'planned' : 'on the player, not planned'}`;
-    return `<i class="${planned ? '' : 'hollow'}${on ? ' onp' : ''}" style="--kc:${k.color}" title="${esc(t)}">${esc(initials(k.name))}</i>`;
+    const fav = favsOf(id).includes(k.id);
+    const t = `${k.name}: ${planned && on ? 'planned, already on the player' : planned ? 'planned' : 'on the player, not planned'}${fav ? ', a favourite' : ''}`;
+    return `<i class="${planned ? '' : 'hollow'}${on ? ' onp' : ''}${fav ? ' fav' : ''}" style="--kc:${k.color}" title="${esc(t)}">${esc(initials(k.name))}</i>`;
   }).join('');
 }
 
@@ -514,7 +527,7 @@ function openDetail(id) {
       <div class="facts">${facts.map(x => `<span>${esc(x)}</span>`).join('')}</div>
       ${it.unsure ? `<div class="unsure">${it.match ? `Best guess: <b>${esc(m.title)}</b> — not sure it's the right one, so the details below may be for a different book in the series` : "Couldn't find this one online"}. The name on the drive is “${esc(it.name)}”.</div>` : ''}
       <h2>Plan for</h2>
-      <div class="assign">${plan.kids.length > 1 ? `<button data-assign="*" class="everyone${plan.kids.every(k => kidsOf(id).includes(k.id)) ? ' on' : ''}" style="--kc:var(--accent)"><span class="av">★</span>Everyone</button>` : ''}${plan.kids.map(k => `<button data-assign="${k.id}" class="${kidsOf(id).includes(k.id) ? 'on' : ''}" style="--kc:${k.color}"><span class="av">${esc(initials(k.name))}</span>${esc(k.name)}${devs[k.id] && devs[k.id].on.has(id) ? ' <small>· on player</small>' : ''}</button>`).join('')}</div>
+      <div class="assign">${plan.kids.length > 1 ? `<button data-assign="*" class="everyone${plan.kids.every(k => kidsOf(id).includes(k.id)) ? ' on' : ''}" style="--kc:var(--accent)"><span class="av">★</span>Everyone</button>` : ''}${plan.kids.map(k => `<span class="pick" style="--kc:${k.color}"><button data-assign="${k.id}" class="${kidsOf(id).includes(k.id) ? 'on' : ''}"><span class="av">${esc(initials(k.name))}</span>${esc(k.name)}${devs[k.id] && devs[k.id].on.has(id) ? ' <small>· on player</small>' : ''}</button><button data-fav="${k.id}" class="fav${favsOf(id).includes(k.id) ? ' on' : ''}" title="${esc(k.name)}'s favourite" aria-label="${esc(k.name)}'s favourite" aria-pressed="${favsOf(id).includes(k.id)}">♥</button></span>`).join('')}</div>
       ${m.blurb ? `<p class="blurb">${esc(m.blurb)}</p>` : ''}
       <div class="src">On the drive: <b>${esc(it.name)}</b><br>${it.bytes != null ? esc((it.filedAs || it.category) + ' folder') : esc(it.folder)}${it.files ? ` · ${it.files} files` : ''}
         ${m.link ? `<br>Details from <a href="${esc(m.link)}" target="_blank" rel="noopener noreferrer">${esc(m.source)}</a>` : ''}</div>
@@ -553,7 +566,7 @@ function renderKidEditor() {
 
 $('#kidPanel').addEventListener('click', async e => {
   const t = e.target.closest('[data-view]');
-  if (t) { f.kidView = t.dataset.view; renderKidPanel(); apply(); return; }
+  if (t) { scrollMemo[viewKey()] = window.scrollY; f.kidView = t.dataset.view; renderKidPanel(); apply(scrollMemo[viewKey()] || 0); return; }
   if (e.target.id === 'checkNow') {
     checking = true; renderKidPanel();
     await loadDevices(f.kid);
@@ -609,11 +622,13 @@ document.querySelectorAll('.fold').forEach(d => {
   if (d.dataset.fold in folds) d.open = folds[d.dataset.fold];
   d.addEventListener('toggle', () => { folds[d.dataset.fold] = d.open; store.set('folds', folds); });
 });
+const viewKey = () => f.kid ? f.kid + ':' + f.kidView : 'all';
 function pickKid(e) {
   const b = e.target.closest('[data-kid]'); if (!b) return;
+  scrollMemo[viewKey()] = window.scrollY;
   f.kid = f.kid === b.dataset.kid ? '' : b.dataset.kid;
   drawer(false);
-  renderKids(); apply(); window.scrollTo({ top: 0, behavior: 'smooth' });
+  renderKids(); apply(scrollMemo[viewKey()] || 0);
 }
 $('#kids').addEventListener('click', pickKid);
 $('#sideKids').addEventListener('click', pickKid);
@@ -630,10 +645,12 @@ $('#grid').addEventListener('click', e => {
 });
 
 $('#detail').addEventListener('click', e => {
-  const b = e.target.closest('[data-assign]'); if (!b) return;
+  const b = e.target.closest('[data-assign],[data-fav]'); if (!b) return;
   const id = $('#detail').dataset.id, on = !b.classList.contains('on');
-  if (b.dataset.assign === '*') plan.kids.forEach(k => setKid(id, k.id, on)); // everyone, or no one
+  if (b.dataset.fav) setFav(id, b.dataset.fav, on); // favouriting also plans it
+  else if (b.dataset.assign === '*') plan.kids.forEach(k => setKid(id, k.id, on)); // everyone, or no one
   else setKid(id, b.dataset.assign, on);
+  $('#detail').querySelectorAll('[data-fav]').forEach(x => { const v = favsOf(id).includes(x.dataset.fav); x.classList.toggle('on', v); x.setAttribute('aria-pressed', v); });
   // keep every button (and Everyone) showing the real state
   $('#detail').querySelectorAll('[data-assign]').forEach(x => x.classList.toggle('on',
     x.dataset.assign === '*' ? plan.kids.every(k => kidsOf(id).includes(k.id)) : kidsOf(id).includes(x.dataset.assign)));
@@ -693,6 +710,7 @@ $('#kidEditor').addEventListener('click', e => {
   if (!confirm(`Remove ${k.name}? Their plan is removed too.`)) return;
   plan.kids.splice(+b.dataset.del, 1);
   for (const id of Object.keys(plan.assign)) setKid(id, k.id, false);
+  for (const id of Object.keys(plan.fav || {})) setFav(id, k.id, false);
   if (f.kid === k.id) f.kid = '';
   save(); renderKids(); renderKidEditor(); apply(true);
 });

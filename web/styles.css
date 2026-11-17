@@ -263,3 +263,13 @@ body.selecting .card .tick { display: grid; }
 /* "Everyone" sits first and a little apart from the kids */
 .assign .everyone { margin-right: 6px; }
 .assign .everyone:not(.on) .av { background: var(--accent); }
+
+/* favourites: a heart beside each kid in the detail sheet, and on the kid's dot on a card */
+.assign .pick { display: inline-flex; gap: 2px; }
+.assign .pick > button[data-assign] { border-radius: 10px 4px 4px 10px; }
+.assign button.fav { border-radius: 4px 10px 10px 4px; padding: 6px 10px; color: var(--muted); font-size: 15px; line-height: 1; }
+.assign button.fav:hover { color: #ff4f7b; }
+.assign button.fav.on { background: var(--kc); color: #fff; }
+.dots i.fav { position: relative; }
+.dots i.fav::after { content: '\2665'; position: absolute; top: -6px; right: -5px; font-size: 10px; line-height: 1; color: #ff4f7b;
+  text-shadow: 0 0 2px #fff, 0 0 2px #fff; }

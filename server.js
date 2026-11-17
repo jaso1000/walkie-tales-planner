@@ -95,10 +95,10 @@ function exportCsv() {
     for (const [id, kids] of Object.entries(plan.assign)) {
       if (!kids.includes(kid.id)) continue;
       const it = byId.get(id); if (!it) continue;
-      rows.push({ kid: kid.name, kidId: kid.id, device: kid.device || '', ...details(it) });
+      rows.push({ kid: kid.name, kidId: kid.id, device: kid.device || '', favourite: ((plan.fav || {})[id] || []).includes(kid.id) ? 'yes' : '', ...details(it) });
     }
   }
-  const cols = rows.length ? Object.keys(rows[0]) : ['kid', 'kidId', 'device', ...Object.keys(details({ match: null }))];
+  const cols = rows.length ? Object.keys(rows[0]) : ['kid', 'kidId', 'device', 'favourite', ...Object.keys(details({ match: null }))];
   return '﻿' + [cols, ...rows.map(r => cols.map(c => r[c]))].map(r => r.map(csvCell).join(',')).join('\r\n');
 }
 
@@ -106,10 +106,11 @@ function exportCsv() {
 function exportJson() {
   const { plan, cat, byId } = planned();
   const items = {};
-  for (const id of Object.keys(plan.assign)) { const it = byId.get(id); if (it) items[id] = { ...details(it), plannedFor: plan.assign[id] }; }
+  for (const id of Object.keys(plan.assign)) { const it = byId.get(id); if (it) items[id] = { ...details(it), plannedFor: plan.assign[id], favouriteOf: (plan.fav || {})[id] || [] }; }
   return {
     exported: new Date().toISOString(), catalogBuilt: cat.built || '', planVersion: plan.version,
-    kids: plan.kids.map(k => ({ ...k, items: Object.keys(plan.assign).filter(id => plan.assign[id].includes(k.id)) })),
+    kids: plan.kids.map(k => ({ ...k, items: Object.keys(plan.assign).filter(id => plan.assign[id].includes(k.id)),
+      favourites: Object.keys(plan.fav || {}).filter(id => plan.fav[id].includes(k.id) && (plan.assign[id] || []).includes(k.id)) })),
     items,
   };
 }
@@ -137,7 +138,8 @@ const server = http.createServer(async (req, res) => {
       const cur = loadPlan();
       if (typeof next.version !== 'number' || next.version !== cur.version) return send(res, 409, cur); // someone else saved first
       if (!Array.isArray(next.kids) || typeof next.assign !== 'object') return send(res, 400, { error: 'Bad plan' });
-      const plan = { version: cur.version + 1, saved: new Date().toISOString(), kids: next.kids, assign: next.assign };
+      const fav = next.fav && typeof next.fav === 'object' ? next.fav : (cur.fav || {});
+      const plan = { version: cur.version + 1, saved: new Date().toISOString(), kids: next.kids, assign: next.assign, fav };
       savePlan(plan);
       return send(res, 200, plan);
     }
