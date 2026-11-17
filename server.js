@@ -10,6 +10,10 @@ const PORT = parseInt(process.env.PORT || '8475', 10);
 const DATA = path.resolve(process.env.DATA_DIR || path.join(__dirname, 'data'));
 const WEB = path.join(__dirname, 'web');
 const PLAN = path.join(DATA, 'plan.json');
+const RADIO = path.join(DATA, 'radio.json'); // [{ name, url, added }]: radio stations, added from the page
+const crypto = require('crypto');
+// Folders every player makes and keeps for itself: never planned, never removed.
+const KEEP_ON_PLAYERS = ['Sleep Sounds', 'Messages'];
 
 const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8',
   '.json': 'application/json; charset=utf-8', '.jpg': 'image/jpeg', '.png': 'image/png', '.svg': 'image/svg+xml',
@@ -17,6 +21,21 @@ const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; ch
 
 function readJson(file, fallback) {
   try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return fallback; }
+}
+
+// Radio stations, shaped like catalogue items (ids are made from the name, like the collection's)
+const radioId = name => crypto.createHash('sha1').update('Radio|' + name.trim().toLowerCase()).digest('hex').slice(0, 10);
+function radioItems() {
+  return readJson(RADIO, []).map(r => ({
+    id: radioId(r.name), name: r.name, category: 'Radio', kind: 'radio', folder: 'Radio station', query: r.name,
+    match: { title: r.name, source: 'Radio station', link: r.url }, confidence: 100, streamUrl: r.url,
+    hasCover: fs.existsSync(path.join(DATA, 'covers', radioId(r.name) + '.jpg')), bytes: 0, files: 1,
+  }));
+}
+/** The collection plus the radio stations. */
+function catalog() {
+  const cat = readJson(path.join(DATA, 'catalog.json'), { items: [] });
+  return { ...cat, items: cat.items.concat(radioItems()) };
 }
 
 function loadPlan() {
@@ -69,7 +88,7 @@ const driveFolder = () => readJson(path.join(DATA, 'drive.json'), {}).folder || 
 function details(it) {
   const m = it.match || {};
   return {
-    id: it.id, nameOnDrive: it.name, pathOnDrive: /^On the players/.test(it.folder || '') ? '' : [driveFolder(), it.filedAs || it.category, it.name].filter(Boolean).join('\\'), sharedFolder: it.folder,
+    id: it.id, nameOnDrive: it.name, streamUrl: it.streamUrl || '', pathOnDrive: it.kind === 'radio' || /^On the players/.test(it.folder || '') ? '' : [driveFolder(), it.filedAs || it.category, it.name].filter(Boolean).join('\\'), sharedFolder: it.folder,
     category: it.category, filedOnDriveAs: it.filedAs || it.category, type: it.kind, season: it.season || '',
     title: m.title || it.query || it.name, subtitle: m.subtitle || '', authors: (m.authors || []).join('; '),
     narrators: (m.narrators || []).join('; '), series: m.series || '', seriesNumber: m.seriesPos || '',
@@ -83,7 +102,7 @@ function details(it) {
 
 function planned() {
   const plan = loadPlan();
-  const cat = readJson(path.join(DATA, 'catalog.json'), { items: [] });
+  const cat = catalog();
   const byId = new Map(cat.items.map(i => [i.id, i]));
   return { plan, cat, byId };
 }
@@ -109,19 +128,35 @@ function exportJson() {
   for (const id of Object.keys(plan.assign)) { const it = byId.get(id); if (it) items[id] = { ...details(it), plannedFor: plan.assign[id], favouriteOf: (plan.fav || {})[id] || [] }; }
   return {
     exported: new Date().toISOString(), catalogBuilt: cat.built || '', planVersion: plan.version,
+    keepOnPlayers: KEEP_ON_PLAYERS, // the players' own folders: leave them where they are
     kids: plan.kids.map(k => ({ ...k, items: Object.keys(plan.assign).filter(id => plan.assign[id].includes(k.id)),
       favourites: Object.keys(plan.fav || {}).filter(id => plan.fav[id].includes(k.id) && (plan.assign[id] || []).includes(k.id)) })),
     items,
   };
 }
 
-const devices = require('./devices')(DATA, readJson);
+const devices = require('./devices')(DATA, readJson, () => catalog().items, [path.join(DATA, 'catalog.json'), RADIO]);
 
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://x');
   const p = decodeURIComponent(url.pathname);
   try {
-    if (p === '/api/catalog') return sendFile(res, path.join(DATA, 'catalog.json'));
+    if (p === '/api/catalog') return send(res, 200, catalog());
+    if (p === '/api/radio' && req.method === 'POST') { // add a radio station (or change its address)
+      const b = await body(req);
+      const name = String(b.name || '').trim().slice(0, 60), url = String(b.url || '').trim();
+      if (!name || /[\\/:*?"<>|]/.test(name)) return send(res, 400, { error: 'Give the station a name (no / \\ : * ? " < > |)' });
+      if (!/^https?:\/\/\S+$/i.test(url) || url.length > 1000) return send(res, 400, { error: 'The stream address must start with http:// or https://' });
+      const list = readJson(RADIO, []).filter(r => radioId(r.name) !== radioId(name));
+      list.push({ name, url, added: new Date().toISOString() });
+      fs.writeFileSync(RADIO, JSON.stringify(list, null, 1));
+      return send(res, 200, { id: radioId(name) });
+    }
+    const rd = p.match(/^\/api\/radio\/([0-9a-f]{10})$/);
+    if (rd && req.method === 'DELETE') {
+      fs.writeFileSync(RADIO, JSON.stringify(readJson(RADIO, []).filter(r => radioId(r.name) !== rd[1]), null, 1));
+      return send(res, 200, { ok: true });
+    }
     if (p === '/api/plan' && req.method === 'GET') return send(res, 200, loadPlan());
     // what's on each player now (cached; POST reads them again), and each kid's player address (never the PIN)
     if (p === '/api/devices' && req.method === 'GET') return send(res, 200, devices.cache());

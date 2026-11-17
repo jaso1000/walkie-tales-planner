@@ -6,7 +6,7 @@ const path = require('path');
 const http = require('http');
 const https = require('https');
 
-module.exports = function devices(DATA, readJson) {
+module.exports = function devices(DATA, readJson, loadItems, sources) {
   const PLAYERS = path.join(DATA, 'players.json');   // { kidId: { url, pin } }
   const CACHE = path.join(DATA, 'devices.json');     // last reading of every player
   let busy = null;
@@ -20,10 +20,9 @@ module.exports = function devices(DATA, readJson) {
   // so new items show as "on the player" straight away without waking anyone's phone.
   function cache() {
     const out = readJson(CACHE, { updated: null, kids: {} });
-    let built = '';
-    try { built = String(fs.statSync(path.join(DATA, 'catalog.json')).mtimeMs); } catch { return out; }
+    const built = sources.map(f => { try { return fs.statSync(f).mtimeMs; } catch { return 0; } }).join('/');
     if (out.matchedTo === built) return out;
-    const items = readJson(path.join(DATA, 'catalog.json'), { items: [] }).items;
+    const items = loadItems();
     for (const r of Object.values(out.kids)) if (r.folders) r.matches = matchFolders(r.folders, items);
     out.matchedTo = built;
     try { fs.writeFileSync(CACHE, JSON.stringify(out)); } catch { /* read-only: match again next time */ }
@@ -66,7 +65,7 @@ module.exports = function devices(DATA, readJson) {
     return s;
   }
   // the player's own idea of a folder's type, against the collection's
-  const KIND = { music: ['music'], audiobook: ['book', 'tonie', 'tv', 'movie'], podcast: ['podcast'] };
+  const KIND = { music: ['music'], audiobook: ['book', 'tonie', 'tv', 'movie'], podcast: ['podcast'], radio: ['radio'] };
 
   /** Each player folder -> { id, score } of the best catalogue item, or null when nothing fits well. */
   function matchFolders(folders, items) {
@@ -84,6 +83,7 @@ module.exports = function devices(DATA, readJson) {
         // the player's folder name inside a longer collection name ("Frozen - The Songs" in "Disney Music - Frozen The Songs")
         if (s < 0.92 && ft.size >= 2 && k.d === fd && ` ${k.n} `.includes(` ${fn} `)) s = 0.92;
         if (kinds && !kinds.includes(c.kind)) s *= 0.9;
+        if ((f.live || f.category === 'radio') !== (c.kind === 'radio')) s *= 0.5; // a station is only ever a station
         if (s > bestScore) { bestScore = s; best = c.id; }
       }
       out[f.name] = bestScore >= 0.8 ? { id: best, score: Math.round(bestScore * 100) } : null;
@@ -123,7 +123,7 @@ module.exports = function devices(DATA, readJson) {
   async function refresh(onlyKid) {
     if (busy) return busy;
     busy = (async () => {
-      const cat = readJson(path.join(DATA, 'catalog.json'), { items: [] });
+      const cat = { items: loadItems() };
       const ps = players(), out = cache();
       const ids = Object.keys(ps).filter(k => !onlyKid || k === onlyKid);
       const results = await Promise.all(ids.map(k => readOne(ps[k], cat.items)));

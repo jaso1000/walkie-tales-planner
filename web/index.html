@@ -101,6 +101,14 @@
     <h2>Kids and their players</h2>
     <div id="kidEditor"></div>
     <button id="addKid" class="text-btn">+ Add a kid</button>
+    <h2>Radio stations</h2>
+    <p class="muted fine">Live streams for the players. They take no space. Sleep Sounds and Messages are the players' own and always stay on them.</p>
+    <div id="radioList"></div>
+    <form id="radioAdd" class="radio-add">
+      <input id="radioName" placeholder="Station name" aria-label="Station name" maxlength="60" required>
+      <input id="radioUrl" placeholder="Stream address (https://…)" aria-label="Stream address" type="url" required>
+      <button class="btn" type="submit">Add</button>
+    </form>
     <p class="muted fine" id="catInfo"></p>
   </div>
 </div>

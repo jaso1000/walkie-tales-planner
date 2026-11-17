@@ -3,11 +3,11 @@
 
 const TYPES = [
   ['all', 'Everything', '✨'], ['book', 'Books', '📚'], ['music', 'Music', '🎵'], ['podcast', 'Podcasts', '🎙️'],
-  ['tv', 'TV', '📺'], ['movie', 'Movies', '🎬'], ['tonie', 'Tonies', '🧸'],
+  ['tv', 'TV', '📺'], ['movie', 'Movies', '🎬'], ['tonie', 'Tonies', '🧸'], ['radio', 'Radio', '📻'],
 ];
-const TYPE_NAME = { book: 'Book', music: 'Music', podcast: 'Podcast', tv: 'TV', movie: 'Movie', tonie: 'Tonie' };
+const TYPE_NAME = { book: 'Book', music: 'Music', podcast: 'Podcast', tv: 'TV', movie: 'Movie', tonie: 'Tonie', radio: 'Radio station' };
 const TYPE_ICON = Object.fromEntries(TYPES.map(t => [t[0], t[2]]));
-const TYPE_COLOR = { book: '#6C4CF1', music: '#FF6B8A', podcast: '#2EC4B6', tv: '#4F9DFF', movie: '#FF8A3D', tonie: '#E0A100' };
+const TYPE_COLOR = { book: '#6C4CF1', music: '#FF6B8A', podcast: '#2EC4B6', tv: '#4F9DFF', movie: '#FF8A3D', tonie: '#E0A100', radio: '#2D9CDB' };
 const AGES = ['Under 5', '5–8', '8–12', 'Teen', 'Grown-up', 'All ages', 'Kids'];
 const MB_PER_MIN = 0.94;      // ~128 kbps, for a size estimate until the drive is scanned
 const MB_PER_TRACK = 4.5;
@@ -20,6 +20,7 @@ const store = {
 };
 
 let items = [], byId = new Map(), plan = { version: 0, kids: [], assign: {}, fav: {} }, catalogBuilt = '';
+let showPlayer = store.get('showPlayer', false); // the ⓘ details in a child's view
 const scrollMemo = {}; // where each view was scrolled to, so coming back to it lands in the same place
 let devs = {}, devUpdated = null, playersCfg = {}, checking = false; // what's on each child's player right now
 const PLAYER_MADE = new Set(['sleep sounds', 'messages', 'app update']); // folders the player makes itself
@@ -148,6 +149,15 @@ async function load() {
   setInterval(() => loadDevices().then(changed => { if (changed) { renderKids(); apply(true); } }), 60000);
 }
 
+/** Load the collection again (after a radio station is added or removed), keeping the plan and filters. */
+async function reloadCatalog() {
+  const cat = await fetch('/api/catalog').then(r => r.json());
+  items = (cat.items || []).map(prep);
+  byId = new Map(items.map(i => [i.id, i]));
+  await loadDevices();
+  buildFilters(); renderKids(); apply(true);
+}
+
 async function readPlayersNow() {
   if (!Object.keys(playersCfg).length) return;
   checking = true; renderKidPanel();
@@ -179,7 +189,7 @@ async function loadDevices(fresh) {
           on.set(m.id, (on.get(m.id) || 0) + fo.bytes);
           const it = byId.get(m.id);
           if (!it.bytes && fo.bytes && !it.fromPlayer) { it.estBefore = it.est; it.est = fo.bytes; it.exact = true; it.fromPlayer = true; }
-        } else extra.push({ ...fo, made: fo.live || PLAYER_MADE.has(fo.name.toLowerCase()) }); // radio streams too
+        } else extra.push({ ...fo, made: PLAYER_MADE.has(fo.name.toLowerCase()) });
       }
       devs[kid] = { ...r, on, extra, used, hasData: !!r.folders };
     }
@@ -254,7 +264,7 @@ function kidUse(kidId) {
     const it = byId.get(id); if (!it) continue;
     n++;
     const b = d.on.get(id) || it.est;
-    if (b) { bytes += b; byType[it.kind] = (byType[it.kind] || 0) + b; } else unknown++;
+    if (b) { bytes += b; byType[it.kind] = (byType[it.kind] || 0) + b; } else if (it.kind !== 'radio') unknown++; // a station takes no space
     if (d.on.has(id)) keep += b; else { add += b; nAdd++; }
   }
   let remove = 0, nRemove = 0;
@@ -357,32 +367,31 @@ function renderKidPanel() {
     + (d.ok ? `read ${ago(d.checked)}` : `<span style="color:var(--warn)">not answering (${esc(d.error || 'asleep?')}), showing what was there ${ago(d.checked)}</span>`);
   if (!hasDev && !['plan', 'fav'].includes(f.kidView)) f.kidView = 'plan';
   const nKeep = u.nOn - u.nRemove;
-  // One box per question a grown-up asks; tapping a box shows those items below.
-  const box = (key, icon, n, title, note, size) => `<button class="kbox${f.kidView === key ? ' on' : ''}" data-view="${key}">
-      <span class="ki">${icon}</span><b>${n.toLocaleString()}</b><span class="kt">${title}</span>
-      <small>${note}${size ? ` · ${gb(size)}` : ''}</small></button>`;
-  const boxes = [box('plan', '📋', u.n, 'Planned', `everything picked for ${esc(k.name)}`, u.bytes),
-    box('fav', '♥', favCount(k.id), 'Favourites', 'the ones they love')];
-  const match = !hasDev ? [] : [
-    box('keep', '✅', nKeep, 'Already there', 'planned and on the player', u.keep),
-    box('add', '➕', u.nAdd, 'Needs copying', 'planned, not on the player yet', u.add),
-    box('remove', '➖', u.nRemove, 'Could come off', 'on the player, not planned', u.remove),
-  ].concat(u.nExtra ? [box('extra', '📁', u.nExtra, 'Other folders', 'on the player, not in the collection', u.extra)] : []);
+  // Simple by default: what's planned and whether it fits. How the player compares sits behind the ⓘ.
+  if (!showPlayer && !['plan', 'fav'].includes(f.kidView)) f.kidView = 'plan';
+  const nFav = favCount(k.id);
+  const row = (key, icon, n, text, size) => `<button class="prow${f.kidView === key ? ' on' : ''}" data-view="${key}">
+      <span class="pi">${icon}</span><b>${n.toLocaleString()}</b> ${text}${size ? `<span class="muted"> · ${gb(size)}</span>` : ''}</button>`;
+  const details = !hasDev ? '' : `<div class="pdetails"${showPlayer ? '' : ' hidden'}>
+      <p class="muted fine">What's on ${esc(k.name)}'s player now, against the plan. Tap a line to see those items.</p>
+      ${row('keep', '✅', nKeep, 'planned and already on the player', u.keep)}
+      ${row('add', '➕', u.nAdd, 'planned, still to copy', u.add)}
+      ${row('remove', '➖', u.nRemove, 'on the player but not planned', u.remove)}
+      ${u.nExtra ? row('extra', '📁', u.nExtra, "on the player but not in the collection", u.extra) : ''}
+      ${u.nRemove ? `<button class="text-btn" id="importOn">Add what's on the player to the plan</button>` : ''}</div>`;
   const pct = b => Math.min(100, b / Math.max(space, 1) * 100).toFixed(1) + '%';
   const over = space && left < 0;
   el.style.setProperty('--kc', k.color);
   el.innerHTML = `<div class="kp-head">
       <div class="kp-title"><span class="av">${esc(initials(k.name))}</span><div><h2>${esc(k.name)}</h2><div class="muted fine">${state}</div></div></div>
-      <div class="kp-actions">${playersCfg[k.id] ? `<button class="text-btn" id="checkNow"${checking ? ' disabled' : ''}>${checking ? 'Checking…' : '↻ Check the player'}</button>` : ''}
-      ${hasDev && u.nRemove ? `<button class="text-btn" id="importOn">Add what's on it to the plan</button>` : ''}</div></div>
-    <div class="space-line">${space
-      ? (over ? `<b class="bad">${gb(-left)} too much.</b> The plan needs ${gb(u.after)}, the player has room for ${gb(space)}.`
-              : `<b>${gb(left)} free</b> once the plan is on the player <span class="muted">(it needs ${gb(u.after)} of ${gb(space)})</span>`)
-      : `The plan needs ${gb(u.after)}. <span class="muted">Free space on the player isn't known yet.</span>`}
-      ${u.unknown ? `<span class="muted"> · ${u.unknown} without a size yet</span>` : ''}</div>
+      <div class="kp-actions">${playersCfg[k.id] ? `<button class="text-btn" id="checkNow"${checking ? ' disabled' : ''}>${checking ? 'Checking…' : '↻ Check the player'}</button>` : ''}</div></div>
+    <div class="space-line"><b>${u.n.toLocaleString()} planned</b> · ${gb(u.after)} ·
+      ${space ? (over ? `<b class="bad">${gb(-left)} too much</b> for the player` : `<b>${gb(left)} left</b> on the player`) : '<span class="muted">free space not known yet</span>'}</div>
     ${space ? `<div class="space-bar${over ? ' over' : ''}"><i style="width:${pct(u.after)}"></i></div>` : ''}
-    <h4 class="kh">${esc(k.name)}'s plan</h4><div class="kboxes">${boxes.join('')}</div>
-    ${match.length ? `<h4 class="kh">To make the player match the plan</h4><div class="kboxes">${match.join('')}</div>` : ''}`;
+    <div class="tabs"><button class="tab${f.kidView === 'plan' ? ' on' : ''}" data-view="plan">Planned<em>${u.n}</em></button>
+      <button class="tab${f.kidView === 'fav' ? ' on' : ''}" data-view="fav">♥ Favourites<em>${nFav}</em></button>
+      ${hasDev ? `<button class="info-btn${showPlayer ? ' on' : ''}" id="playerInfo" title="How the player compares with the plan" aria-expanded="${showPlayer}">ⓘ<span> The player</span></button>` : ''}</div>
+    ${details}`;
   el.hidden = false;
 }
 
@@ -519,7 +528,7 @@ function openDetail(id) {
   const it = byId.get(id), m = it.match || {};
   const len = it.minutes ? (it.minutes >= 60 ? `${Math.floor(it.minutes / 60)} h ${it.minutes % 60} min` : `${it.minutes} min`) : '';
   const facts = [TYPE_NAME[it.kind], it.season, len, m.tracks ? `${m.tracks} tracks` : '', it.age ? `Age: ${it.age} (guess)` : '',
-    m.year, it.est ? (it.exact ? gb(it.est) : `≈ ${gb(it.est)}`) : 'Size not known yet', it.files ? `${it.files} files` : '',
+    m.year, it.kind === 'radio' ? 'Live stream, takes no space' : it.est ? (it.exact ? gb(it.est) : `≈ ${gb(it.est)}`) : 'Size not known yet', it.files ? `${it.files} files` : '',
     it.files === 0 ? 'No audio on the drive' : '', ...(m.genres || []).slice(0, 3),
     it.filedAs ? `Filed on the drive under ${it.filedAs}` : ''].filter(Boolean);
   $('#detail').innerHTML = `<div class="detail">
@@ -535,7 +544,9 @@ function openDetail(id) {
       <h2>Plan for</h2>
       <div class="assign">${plan.kids.length > 1 ? `<button data-assign="*" class="everyone${plan.kids.every(k => kidsOf(id).includes(k.id)) ? ' on' : ''}" style="--kc:var(--accent)"><span class="av">★</span>Everyone</button>` : ''}${plan.kids.map(k => `<span class="pick" style="--kc:${k.color}"><button data-assign="${k.id}" class="${kidsOf(id).includes(k.id) ? 'on' : ''}"><span class="av">${esc(initials(k.name))}</span>${esc(k.name)}${devs[k.id] && devs[k.id].on.has(id) ? ' <small>· on player</small>' : ''}</button><button data-fav="${k.id}" class="fav${favsOf(id).includes(k.id) ? ' on' : ''}" title="${esc(k.name)}'s favourite" aria-label="${esc(k.name)}'s favourite" aria-pressed="${favsOf(id).includes(k.id)}">♥</button></span>`).join('')}</div>
       ${m.blurb ? `<p class="blurb">${esc(m.blurb)}</p>` : ''}
-      <div class="src">On the drive: <b>${esc(it.name)}</b><br>${it.bytes != null ? esc((it.filedAs || it.category) + ' folder') : esc(it.folder)}${it.files ? ` · ${it.files} files` : ''}
+      ${it.kind === 'radio' ? `<div class="src">Stream: <a href="${esc(it.streamUrl)}" target="_blank" rel="noopener noreferrer">${esc(it.streamUrl)}</a>
+        <br><button class="text-btn danger" data-delradio="${it.id}">Remove this station from the collection</button></div>` : ''}
+      <div class="src"${it.kind === 'radio' ? ' hidden' : ''}>On the drive: <b>${esc(it.name)}</b><br>${it.bytes != null ? esc((it.filedAs || it.category) + ' folder') : esc(it.folder)}${it.files ? ` · ${it.files} files` : ''}
         ${m.link ? `<br>Details from <a href="${esc(m.link)}" target="_blank" rel="noopener noreferrer">${esc(m.source)}</a>` : ''}</div>
     </div></div>`;
   $('#detail').dataset.id = id;
@@ -548,7 +559,7 @@ function openMenu() {
   const n = Object.keys(plan.assign).length;
   $('#planInfo').textContent = `${n} items planned for at least one kid${plan.saved ? ' · saved ' + new Date(plan.saved).toLocaleString() : ''}.`;
   $('#catInfo').textContent = `Catalogue built ${catalogBuilt || '—'} · ${items.length} items · ${items.filter(i => i.match).length} identified · ${items.filter(i => i.hasCover).length} with covers · ${items.filter(i => i.exact).length} with real sizes.`;
-  renderKidEditor();
+  renderKidEditor(); renderRadio();
   $('#menu').hidden = false;
 }
 
@@ -573,6 +584,10 @@ function renderKidEditor() {
 $('#kidPanel').addEventListener('click', async e => {
   const t = e.target.closest('[data-view]');
   if (t) { scrollMemo[viewKey()] = window.scrollY; f.kidView = t.dataset.view; renderKidPanel(); apply(scrollMemo[viewKey()] || 0); return; }
+  if (e.target.closest('#playerInfo')) {
+    showPlayer = !showPlayer; store.set('showPlayer', showPlayer);
+    const was = f.kidView; renderKidPanel(); if (f.kidView !== was) apply(); return;
+  }
   if (e.target.id === 'checkNow') {
     checking = true; renderKidPanel();
     await loadDevices(f.kid);
@@ -650,7 +665,14 @@ $('#grid').addEventListener('click', e => {
   openDetail(id);
 });
 
-$('#detail').addEventListener('click', e => {
+$('#detail').addEventListener('click', async e => {
+  const del = e.target.closest('[data-delradio]');
+  if (del) {
+    const it = byId.get(del.dataset.delradio);
+    if (!confirm(`Remove ${it.name} from the collection? It stays on any player that has it.`)) return;
+    await fetch('/api/radio/' + it.id, { method: 'DELETE' });
+    $('#sheet').hidden = true; await reloadCatalog(); toast(`Removed ${it.name}`); return;
+  }
   const b = e.target.closest('[data-assign],[data-fav]'); if (!b) return;
   const id = $('#detail').dataset.id, on = !b.classList.contains('on');
   if (b.dataset.fav) setFav(id, b.dataset.fav, on); // favouriting also plans it
@@ -720,6 +742,30 @@ $('#kidEditor').addEventListener('click', e => {
   if (f.kid === k.id) f.kid = '';
   save(); renderKids(); renderKidEditor(); apply(true);
 });
+// radio stations: add one with a name and its stream address
+function renderRadio() {
+  const list = items.filter(i => i.kind === 'radio').sort((a, b) => a.name.localeCompare(b.name));
+  $('#radioList').innerHTML = list.length ? list.map(r => `<div class="radio-row"><span>📻 <b>${esc(r.name)}</b><small class="muted">${esc(r.streamUrl)}</small></span>
+      <button class="ghost" data-delradio2="${r.id}" aria-label="Remove ${esc(r.name)}">✕</button></div>`).join('')
+    : '<p class="muted fine">No radio stations yet.</p>';
+}
+$('#radioAdd').addEventListener('submit', async e => {
+  e.preventDefault();
+  const name = $('#radioName').value.trim(), url = $('#radioUrl').value.trim();
+  const r = await fetch('/api/radio', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, url }) });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) return toast(j.error || "Couldn't add it");
+  $('#radioName').value = ''; $('#radioUrl').value = '';
+  await reloadCatalog(); renderRadio(); toast(`Added ${name}`);
+});
+$('#radioList').addEventListener('click', async e => {
+  const b = e.target.closest('[data-delradio2]'); if (!b) return;
+  const it = byId.get(b.dataset.delradio2);
+  if (!confirm(`Remove ${it.name} from the collection? It stays on any player that has it.`)) return;
+  await fetch('/api/radio/' + it.id, { method: 'DELETE' });
+  await reloadCatalog(); renderRadio(); toast(`Removed ${it.name}`);
+});
+
 $('#addKid').addEventListener('click', () => {
   const id = 'kid' + Date.now().toString(36);
   plan.kids.push({ id, name: 'New kid', device: '', color: '#6C4CF1', spaceGB: null });

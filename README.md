@@ -41,7 +41,14 @@ player's folders to your collection. Each child's view shows:
 - **Add what's on it to the plan**, to start a child's plan from what they already have
 - a storage bar using the player's real free space
 
-PINs are kept in `data/players.json` on the server and are never sent to the page.
+PINs are kept in `data/players.json` on the server and are never sent to the page. A child's view keeps it simple:
+what's planned and whether it fits. *ⓘ The player* shows how the player compares. Sleep Sounds and Messages are the
+players' own: they're never counted as something to remove, and the JSON export lists them in `keepOnPlayers`.
+
+## Radio stations
+
+Add live radio stations in the ⋯ menu with a name and a stream address. They're kept in `data/radio.json`, show in the
+collection as their own type, take no space, and match the stations already on the players.
 
 ## Build your catalogue
 

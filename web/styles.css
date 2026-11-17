@@ -291,3 +291,29 @@ body.selecting .card .tick { display: grid; }
 .kbox .kt { grid-column: 2; font-weight: 650; font-size: 13.5px; }
 .kbox small { grid-column: 1 / -1; color: var(--muted); font-size: 12px; margin-top: 2px; line-height: 1.3; }
 @media (max-width: 560px) { .kboxes { grid-template-columns: 1fr 1fr; } }
+
+/* the ⓘ "The player" switch and what it shows */
+.tabs .info-btn { margin-left: auto; background: none; border: 0; color: var(--muted); font: inherit; font-size: 13px; font-weight: 600;
+  cursor: pointer; padding: 6px 2px; white-space: nowrap; }
+.tabs .info-btn:hover, .tabs .info-btn.on { color: var(--text); }
+.tabs .info-btn span { margin-left: 4px; }
+.pdetails { margin-top: 10px; padding: 10px 12px; border-radius: 12px; background: var(--panel-2); }
+.pdetails p { margin: 0 0 6px; }
+.prow { display: flex; align-items: baseline; gap: 6px; width: 100%; text-align: left; background: none; border: 0; border-radius: 8px;
+  padding: 6px 8px; color: var(--text); font: inherit; font-size: 14px; cursor: pointer; }
+.prow:hover { background: color-mix(in srgb, var(--kc) 10%, transparent); }
+.prow.on { background: color-mix(in srgb, var(--kc) 18%, transparent); }
+.prow .pi { width: 22px; flex: none; }
+.pdetails .text-btn { margin-top: 4px; }
+
+/* radio stations in the menu */
+.radio-row { display: flex; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--line); }
+.radio-row span { flex: 1; min-width: 0; }
+.radio-row small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11.5px; }
+.radio-add { display: flex; gap: 6px; flex-wrap: wrap; margin: 10px 0 18px; }
+.radio-add input { flex: 1 1 160px; min-width: 0; padding: 8px 10px; border-radius: 10px; border: 1px solid var(--line); background: var(--panel-2); color: var(--text); font: inherit; }
+.text-btn.danger { color: var(--bad); }
+button.ghost { border: 1px solid var(--line); background: var(--panel-2); color: var(--text); border-radius: 10px; padding: 6px 12px;
+  font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
+button.ghost:hover { border-color: var(--accent); }
+.radio-row button.ghost { padding: 4px 10px; color: var(--muted); }
