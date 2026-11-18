@@ -60,10 +60,25 @@ module.exports = function sync({ DATA, readJson, catalog, loadPlan, devices, det
 
   const natKey = s => s.toLowerCase().split(/(\d+)/).map((t, i) => i % 2 ? t.padStart(12, '0') : t).join('');
   const natCmp = (a, b) => { const x = natKey(a), y = natKey(b); return x < y ? -1 : x > y ? 1 : 0; };
+  // A path on the drive, matching each folder's name without minding capitals: the drive was filled on Windows,
+  // where "Pig the Pug" and "Pig The Pug" are the same folder, and Linux (the server) tells them apart.
+  function onDrive(parts) {
+    let cur = DRIVE;
+    for (const seg of parts) {
+      const exact = path.join(cur, seg);
+      if (fs.existsSync(exact)) { cur = exact; continue; }
+      let names = [];
+      try { names = fs.readdirSync(cur); } catch { return null; }
+      const hit = names.find(n => n.toLowerCase() === seg.toLowerCase());
+      if (!hit) return null;
+      cur = path.join(cur, hit);
+    }
+    return cur;
+  }
   const source = it => {
     if (!DRIVE || !it.pathOnDrive) return null;
-    const p = path.join(DRIVE, ...it.pathOnDrive.split('\\'));
-    for (const c of [p, p + '.mp3', p + '.m4b', p + '.m4a']) if (fs.existsSync(c)) return c;
+    const parts = it.pathOnDrive.split('\\'), last = parts.pop();
+    for (const name of [last, last + '.mp3', last + '.m4b', last + '.m4a']) { const p = onDrive(parts.concat(name)); if (p) return p; }
     return null;
   };
 
