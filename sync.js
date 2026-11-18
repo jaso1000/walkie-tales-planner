@@ -10,6 +10,8 @@ const fs = require('fs');
 const path = require('path');
 const http = require('http');
 const https = require('https');
+const os = require('os');
+const { execFile } = require('child_process');
 const names = require('./names');
 const albumTrack = require('./tags');
 
@@ -111,6 +113,24 @@ module.exports = function sync({ DATA, readJson, catalog, loadPlan, devices, det
     });
   }
 
+  // An iPhone can't play Ogg (Vorbis or Opus): such a track skips at once, so the player races through the folder.
+  // Some drive files are Ogg under an .mp3 or .m4a name, so it's the file's first bytes that tell. For an iPhone
+  // they're turned into M4A (AAC) with ffmpeg on the way.
+  function isOgg(file) {
+    let fd;
+    try { fd = fs.openSync(file, 'r'); const b = Buffer.alloc(4); fs.readSync(fd, b, 0, 4, 0); return b.toString('latin1') === 'OggS'; }
+    catch { return false; } finally { if (fd !== undefined) fs.closeSync(fd); }
+  }
+  function toM4a(src) {
+    const out = path.join(os.tmpdir(), 'wt-sync-' + process.pid + '-' + Date.now() + '.m4a');
+    return new Promise((resolve, reject) => execFile('ffmpeg', ['-nostdin', '-v', 'error', '-y', '-i', src, '-vn', '-map_metadata', '0',
+      '-c:a', 'aac', '-b:a', '96k', '-movflags', '+faststart', out], { timeout: 600000 }, (e, _o, err) => {
+      if (!e) return resolve(out);
+      fs.rm(out, { force: true }, () => {});
+      reject(new Error(e.code === 'ENOENT' ? 'ffmpeg isn’t installed where the planner runs' : 'couldn’t convert it for the iPhone: ' + String(err || e.message).trim().split('\n').pop()));
+    }));
+  }
+
   /** The folder name on the player: the one it already has on another player, a hand-picked one, or tidied. */
   function folderName(it) {
     for (const [f, id] of Object.entries(readJson(LINKS, {}))) if (id === it.id) return f;
@@ -198,15 +218,18 @@ module.exports = function sync({ DATA, readJson, catalog, loadPlan, devices, det
         job.done++;
       }
       const byId = new Map(catalog().items.map(i => [i.id, i]));
+      const st = r.status || {}, iPhone = /iOS/.test(st.version || '') || st.maker === 'Apple';
       for (const a of copy) {
         if (job.stop) break;
         job.step = 'Copying'; job.current = a.folder;
         try {
           const it = details(byId.get(a.id));
           const list = tracks(source(it), a.folder, it.type === 'music');
+          if (iPhone) for (const t of list) if (isOgg(t.src)) { t.ogg = true; t.name = t.name.replace(/\.[^.]+$/, '') + '.m4a'; }
           let have = {};
           try { for (const f of (await call(p, 'GET', '/api/folder?name=' + encodeURIComponent(a.folder))).files || []) have[f.name.normalize('NFC')] = f.size; } catch { /* not there yet */ }
-          const left = list.filter(t => have[t.name.normalize('NFC')] !== t.bytes);
+          // a converted track's size isn't the drive file's, so for those being there is enough
+          const left = list.filter(t => t.ogg ? have[t.name.normalize('NFC')] === undefined : have[t.name.normalize('NFC')] !== t.bytes);
           const need = left.reduce((s, t) => s + t.bytes, 0);
           const free = (await retry(() => call(p, 'GET', '/api/status'))).freeBytes || 0;
           if (need + MARGIN > free) { say(`No room for ${a.folder} (${(need / 1e9).toFixed(2)} GB, ${(free / 1e9).toFixed(2)} GB free)`, 'warn'); job.noRoom++; job.done++; continue; }
@@ -214,7 +237,9 @@ module.exports = function sync({ DATA, readJson, catalog, loadPlan, devices, det
           for (const t of left) {
             if (job.stop) break;
             job.file = t.name;
-            await retry(() => call(p, 'PUT', '/api/upload?folder=' + encodeURIComponent(a.folder) + '&name=' + encodeURIComponent(t.name), { file: t.src, timeout: 300000 }));
+            const file = t.ogg ? await toM4a(t.src) : t.src;
+            try { await retry(() => call(p, 'PUT', '/api/upload?folder=' + encodeURIComponent(a.folder) + '&name=' + encodeURIComponent(t.name), { file, timeout: 300000 })); }
+            finally { if (t.ogg) fs.rm(file, { force: true }, () => {}); }
             job.bytesDone += t.bytes;
           }
           if (job.stop) break;
@@ -222,7 +247,8 @@ module.exports = function sync({ DATA, readJson, catalog, loadPlan, devices, det
           if (fs.existsSync(cover) && have['cover.jpg'] === undefined) await retry(() => call(p, 'PUT', '/api/upload?folder=' + encodeURIComponent(a.folder) + '&name=cover.jpg', { file: cover }));
           await retry(() => call(p, 'POST', '/api/folder/category', { json: { folder: a.folder, category: it.type === 'music' ? 'music' : it.type === 'podcast' ? 'podcast' : 'audiobook' } }));
           link(a.folder, a.id);
-          say(`Copied ${a.folder} (${list.length} ${list.length === 1 ? 'file' : 'files'})`);
+          const conv = list.filter(t => t.ogg).length;
+          say(`Copied ${a.folder} (${list.length} ${list.length === 1 ? 'file' : 'files'}${conv ? `, ${conv} turned from Ogg into M4A for the iPhone` : ''})`);
         } catch (e) { say(`Couldn’t copy ${a.folder}: ${e.message}`, 'bad'); job.errors++; }
         job.file = ''; job.done++;
       }

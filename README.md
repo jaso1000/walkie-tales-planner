@@ -54,7 +54,9 @@ players' own: they're never counted as something to remove, and the JSON export 
 - removes what's on the player but no longer planned (Sleep Sounds and Messages always stay)
 - copies what's planned but missing, from the drive, with tidy folder and track names (download junk, codes and
   run-together words gone; a pack of books as "Book - Chapter 1"; same-name parts as "Part 1, Part 2"), the
-  planner's cover and the right type, and the songs of an album in the album's order
+  planner's cover and the right type, and the songs of an album in the album's order. An iPhone can't play Ogg,
+  so for an iPhone player Ogg tracks (even ones named .mp3 or .m4a) are turned into M4A on the way (ffmpeg, which
+  the Docker image has)
 - adds planned radio stations and turns on the planned favourites
 
 It skips anything that doesn't fit, carries on if you close the page, and can be stopped after the file it's on.
