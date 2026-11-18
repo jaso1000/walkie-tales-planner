@@ -153,6 +153,8 @@ module.exports = function devices(DATA, readJson, loadItems, sources) {
     cache,
     refresh,
     list: () => Object.fromEntries(Object.entries(players()).map(([k, v]) => [k, { url: v.url, hasPin: !!v.pin }])),
+    /** A child's player address and PIN, for the server's own use (Sync to player). Never sent to the page. */
+    player: kidId => players()[kidId] || null,
     set(kidId, url, pin) {
       const p = players();
       if (!url) { delete p[kidId]; savePlayers(p); return; }

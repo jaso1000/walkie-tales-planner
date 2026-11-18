@@ -136,6 +136,8 @@ function exportJson() {
 }
 
 const devices = require('./devices')(DATA, readJson, () => catalog().items, [path.join(DATA, 'catalog.json'), RADIO, path.join(DATA, 'folder-links.json')]);
+// "Sync to player": copies from the drive (DRIVE_DIR), removes, adds stations, sets favourites
+const sync = require('./sync')({ DATA, readJson, catalog, loadPlan, devices, details });
 
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://x');
@@ -162,6 +164,14 @@ const server = http.createServer(async (req, res) => {
     if (p === '/api/devices' && req.method === 'GET') return send(res, 200, devices.cache());
     if (p === '/api/devices/refresh' && req.method === 'POST') return send(res, 200, await devices.refresh(url.searchParams.get('kid') || ''));
     if (p === '/api/players' && req.method === 'GET') return send(res, 200, devices.list());
+    const sy = p.match(/^\/api\/sync\/([\w-]{1,40})(\/status|\/stop)?$/);
+    if (sy) {
+      if (!devices.player(sy[1])) return send(res, 404, { error: 'No player linked for this child' });
+      if (!sy[2] && req.method === 'GET') return send(res, 200, sync.preview(sy[1]));
+      if (!sy[2] && req.method === 'POST') return send(res, 200, sync.start(sy[1]));
+      if (sy[2] === '/status') return send(res, 200, sync.status(sy[1]));
+      if (sy[2] === '/stop' && req.method === 'POST') return send(res, 200, sync.stop(sy[1]));
+    }
     const pl = p.match(/^\/api\/players\/([\w-]{1,40})$/);
     if (pl && req.method === 'PUT') {
       const b = await body(req);

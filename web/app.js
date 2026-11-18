@@ -384,7 +384,8 @@ function renderKidPanel() {
   el.style.setProperty('--kc', k.color);
   el.innerHTML = `<div class="kp-head">
       <div class="kp-title"><span class="av">${esc(initials(k.name))}</span><div><h2>${esc(k.name)}</h2><div class="muted fine">${state}</div></div></div>
-      <div class="kp-actions">${playersCfg[k.id] ? `<button class="text-btn" id="checkNow"${checking ? ' disabled' : ''}>${checking ? 'Checking…' : '↻ Check the player'}</button>` : ''}</div></div>
+      <div class="kp-actions">${playersCfg[k.id] ? `<button class="text-btn" id="checkNow"${checking ? ' disabled' : ''}>${checking ? 'Checking…' : '↻ Check the player'}</button>
+        ${hasDev ? `<button class="text-btn" id="syncOpen">⇅ Sync to player</button>` : ''}` : ''}</div></div>
     <div class="space-line"><b>${u.n.toLocaleString()} planned</b> · ${gb(u.after)} ·
       ${space ? (over ? `<b class="bad">${gb(-left)} too much</b> for the player` : `<b>${gb(left)} left</b> on the player`) : '<span class="muted">free space not known yet</span>'}</div>
     ${space ? `<div class="space-bar${over ? ' over' : ''}"><i style="width:${pct(u.after)}"></i></div>` : ''}
@@ -589,6 +590,7 @@ $('#kidPanel').addEventListener('click', async e => {
     showPlayer = !showPlayer; store.set('showPlayer', showPlayer);
     const was = f.kidView; renderKidPanel(); if (f.kidView !== was) apply(); return;
   }
+  if (e.target.id === 'syncOpen') return openSync(f.kid);
   if (e.target.id === 'checkNow') {
     checking = true; renderKidPanel();
     await loadDevices(f.kid);
@@ -774,6 +776,74 @@ $('#addKid').addEventListener('click', () => {
 });
 
 let toastTimer = 0;
+// ------------------------------------------------------------------------------------------- sync to player
+// Shows what syncing would do (from the last reading), then runs it on the server and follows its progress.
+
+let syncKid = null, syncTimer = null;
+async function openSync(kid) {
+  syncKid = kid;
+  $('#syncSheet').hidden = false;
+  $('#syncBody').innerHTML = '<p class="muted">Working out what to do…</p>';
+  const st = await fetch(`/api/sync/${kid}/status`).then(r => r.json()).catch(() => ({}));
+  if (st.state === 'running') return followSync();
+  const pv = await fetch(`/api/sync/${kid}`).then(r => r.json()).catch(e => ({ error: String(e) }));
+  renderSyncPreview(pv, st);
+}
+
+function renderSyncPreview(pv, last) {
+  const k = plan.kids.find(x => x.id === syncKid) || { name: 'the player' };
+  if (pv.error) { $('#syncBody').innerHTML = `<h2 id="syncTitle">Sync ${esc(k.name)}'s player</h2><p>${esc(pv.error)}</p>`; return; }
+  const copy = pv.add.filter(a => !a.why), cant = pv.add.filter(a => a.why);
+  const after = pv.freeBytes + pv.removeBytes - pv.addBytes;
+  const list = (rows, fmt) => rows.length ? `<ol class="sync-list">${rows.slice(0, 200).map(fmt).join('')}${rows.length > 200 ? `<li class="muted">and ${rows.length - 200} more</li>` : ''}</ol>` : '';
+  const line = (icon, text, rows, fmt) => `<li><span class="pi">${icon}</span><div>${text}</div></li>${list(rows, fmt)}`;
+  const nothing = !copy.length && !pv.remove.length && !pv.stations.length && !pv.favourites.length;
+  const lastRun = last && last.ended ? `<p class="muted fine">Last sync ${ago(last.ended)}: ${esc((last.log[last.log.length - 1] || {}).t || last.state)}</p>` : '';
+  $('#syncBody').innerHTML = `<h2 id="syncTitle">Sync ${esc(k.name)}'s player</h2>
+    <p class="muted fine">From the reading ${ago(pv.checked)}. It reads the player again before it starts.</p>
+    ${nothing && !cant.length ? `<p><b>${esc(k.name)}'s player already matches the plan.</b></p>` : `<ul class="sync-sum">
+      ${pv.remove.length ? line('➖', `Remove <b>${pv.remove.length}</b> no longer planned · frees ${gb(pv.removeBytes)}`, pv.remove, r => `<li>${esc(r.folder)}</li>`) : ''}
+      ${copy.length ? line('➕', `Copy <b>${copy.length}</b> from the drive · ${gb(pv.addBytes)}`, copy, a => `<li>${esc(a.folder)}</li>`) : ''}
+      ${pv.stations.length ? line('📻', `Add <b>${pv.stations.length}</b> radio station${pv.stations.length === 1 ? '' : 's'}`, pv.stations, s => `<li>${esc(s.name)}</li>`) : ''}
+      ${pv.favourites.length ? line('♥', `Make sure <b>${pv.favourites.length}</b> favourite${pv.favourites.length === 1 ? ' is' : 's are'} set`, [], null) : ''}
+      ${cant.length ? line('⚠️', `<b>${cant.length}</b> can't be copied: ${esc(cant[0].why)}`, cant, a => `<li>${esc(a.name)}</li>`) : ''}
+    </ul>
+    <p class="fine">Afterwards: about <b>${gb(Math.max(0, after))}</b> free on the player.${after < 0 ? ' <b class="bad">Not everything fits</b>: what doesn\'t is skipped.' : ''}
+      Sleep Sounds and Messages always stay.</p>`}
+    ${lastRun}
+    <div class="sync-actions">${nothing ? '' : '<button class="btn" id="syncStart">Start syncing</button>'}<button class="text-btn" data-close>Close</button></div>`;
+}
+
+async function followSync() {
+  clearTimeout(syncTimer);
+  if ($('#syncSheet').hidden || !syncKid) return;
+  const j = await fetch(`/api/sync/${syncKid}/status`).then(r => r.json()).catch(() => null);
+  if (!j) { syncTimer = setTimeout(followSync, 4000); return; }
+  const k = plan.kids.find(x => x.id === syncKid) || { name: 'the player' };
+  const pct = j.bytesTotal ? Math.min(100, j.bytesDone / j.bytesTotal * 100) : j.total ? j.done / j.total * 100 : 0;
+  const running = j.state === 'running';
+  $('#syncBody').innerHTML = `<h2 id="syncTitle">Syncing ${esc(k.name)}'s player</h2>
+    <p><b>${running ? esc(j.step || 'Working') : { done: 'Done', stopped: 'Stopped', failed: 'Stopped by a problem' }[j.state] || esc(j.state)}</b>
+      ${running && j.current ? ` · ${esc(j.current)}` : ''}</p>
+    ${running && j.file ? `<p class="muted fine">${esc(j.file)}</p>` : ''}
+    <div class="sync-bar"><i style="width:${pct.toFixed(1)}%"></i></div>
+    <p class="muted fine">${j.done} of ${j.total} steps${j.bytesTotal ? ` · ${gb(j.bytesDone)} of ${gb(j.bytesTotal)} copied` : ''}${j.errors ? ` · <span class="bad">${j.errors} problem${j.errors === 1 ? '' : 's'}</span>` : ''}${j.noRoom ? ` · ${j.noRoom} didn't fit` : ''}</p>
+    <ul class="sync-log">${j.log.slice().reverse().map(l => `<li class="${l.kind}">${esc(l.t)}</li>`).join('')}</ul>
+    <div class="sync-actions">${running ? '<button class="text-btn" id="syncStop">Stop after this file</button>' : ''}<button class="text-btn" data-close>Close</button></div>
+    ${running ? '<p class="muted fine">It carries on if you close this or the page.</p>' : ''}`;
+  if (running) syncTimer = setTimeout(followSync, 2000);
+  else { await loadDevices(); renderKids(); apply(true); }
+}
+
+$('#syncSheet').addEventListener('click', async e => {
+  if (e.target.id === 'syncStart') {
+    e.target.disabled = true;
+    await fetch(`/api/sync/${syncKid}`, { method: 'POST' });
+    return followSync();
+  }
+  if (e.target.id === 'syncStop') { await fetch(`/api/sync/${syncKid}/stop`, { method: 'POST' }); e.target.disabled = true; e.target.textContent = 'Stopping…'; }
+});
+
 function toast(t) {
   const el = $('#toast'); el.textContent = t; el.classList.add('show');
   clearTimeout(toastTimer); toastTimer = setTimeout(() => el.classList.remove('show'), 2200);

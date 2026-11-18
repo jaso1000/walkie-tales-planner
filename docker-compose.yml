@@ -8,3 +8,8 @@ services:
       - "8475:8475"
     volumes:
       - ./data:/data
+      # For "Sync to player" to copy from the collection drive: plug it into the server, then uncomment these
+      # (with the drive's mount point) and the environment lines below.
+      # - /mnt/collection:/drive:ro
+    # environment:
+    #   - DRIVE_DIR=/drive

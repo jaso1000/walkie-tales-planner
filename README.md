@@ -47,6 +47,22 @@ and those folders always match their item exactly. A child's view keeps it simpl
 what's planned and whether it fits. *ⓘ The player* shows how the player compares. Sleep Sounds and Messages are the
 players' own: they're never counted as something to remove, and the JSON export lists them in `keepOnPlayers`.
 
+## Sync to player
+
+*⇅ Sync to player* in a child's view makes their player match the plan. It shows what it will do first, then:
+
+- removes what's on the player but no longer planned (Sleep Sounds and Messages always stay)
+- copies what's planned but missing, from the drive, with tidy folder and track names (download junk, codes and
+  run-together words gone; a pack of books as "Book - Chapter 1"; same-name parts as "Part 1, Part 2"), the
+  planner's cover and the right type, and the songs of an album in the album's order
+- adds planned radio stations and turns on the planned favourites
+
+It skips anything that doesn't fit, carries on if you close the page, and can be stopped after the file it's on.
+Copying needs the drive where the planner runs: set `DRIVE_DIR` to the folder the exports' `pathOnDrive` starts
+from (the drive itself). With Docker, plug the drive into the server, mount it read-only and set `DRIVE_DIR` (see
+`docker-compose.yml`). Without it, the sync still removes, adds stations and sets favourites, and lists what it
+couldn't copy. The naming rules are in `names.js`; the WalkieTales remote's *Tidy names* uses the same ones.
+
 ## Radio stations
 
 Add live radio stations in the ⋯ menu with a name and a stream address. They're kept in `data/radio.json`, show in the

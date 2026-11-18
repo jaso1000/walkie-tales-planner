@@ -131,6 +131,17 @@ svg { fill: currentColor; }
 .kp-title .av { width: 44px; height: 44px; font-size: 18px; }
 .kid-panel h2 { margin: 0; font-size: 21px; line-height: 1.2; }
 .kp-actions { display: flex; gap: 2px; flex-wrap: wrap; }
+/* Sync to player */
+.sync-sum { list-style: none; padding: 0; margin: 4px 0 14px; display: grid; gap: 6px; }
+.sync-sum li { display: flex; gap: 10px; align-items: baseline; }
+.sync-sum .pi { width: 1.4em; text-align: center; flex: none; }
+.sync-list { margin: 0 0 12px; padding: 0 0 0 2.4em; max-height: 9.5em; overflow: auto; font-size: 13px; }
+.sync-list li { margin: 2px 0; }
+.sync-bar { height: 8px; border-radius: 6px; background: var(--accent-soft); overflow: hidden; margin: 8px 0 6px; }
+.sync-bar i { display: block; height: 100%; background: var(--accent); transition: width .4s; }
+.sync-log { list-style: none; padding: 0; margin: 10px 0 0; max-height: 14em; overflow: auto; font-size: 13px; display: grid; gap: 3px; }
+.sync-log .warn { color: var(--warn); } .sync-log .bad { color: var(--bad); font-weight: 600; }
+.sync-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 14px; }
 .big-bar { height: 10px; border-radius: 10px; background: var(--panel-2); overflow: hidden; margin: 14px 0 8px; display: flex; }
 .big-bar i { display: block; height: 100%; }
 .big-bar .stripe { background: repeating-linear-gradient(135deg, #8a84a6 0 5px, transparent 5px 10px); }
